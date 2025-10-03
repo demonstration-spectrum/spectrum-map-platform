@@ -87,7 +87,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: spectrum_map_frontend
     environment:
-      VITE_API_URL: http://localhost:3000
+      VITE_API_URL: http://localhost:3000/api/v1
       VITE_MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN}
       VITE_GEOSERVER_URL: http://localhost:8080/geoserver
     ports:

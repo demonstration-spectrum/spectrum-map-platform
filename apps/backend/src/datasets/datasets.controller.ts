@@ -12,7 +12,7 @@ import {
   UploadedFile,
   Query,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+// import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { DatasetsService } from './datasets.service';
 import { CreateDatasetDto } from './dto/create-dataset.dto';
@@ -20,6 +20,7 @@ import { UpdateDatasetDto } from './dto/update-dataset.dto';
 import { ShareDatasetDto } from './dto/share-dataset.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { FileUploadService } from './file-upload.service';
+import { FileUploadInterceptor } from './file-upload.interceptor';
 
 @ApiTags('datasets')
 @Controller('datasets')
@@ -32,7 +33,7 @@ export class DatasetsController {
   ) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', this.fileUploadService.getMulterConfig()))
+  @UseInterceptors(FileUploadInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a new dataset' })
   @ApiBody({
@@ -76,7 +77,6 @@ export class DatasetsController {
     if (!file) {
       throw new Error('File is required');
     }
-
     return this.datasetsService.create(createDatasetDto, file, req.user.id);
   }
 

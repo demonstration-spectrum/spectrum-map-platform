@@ -19,7 +19,8 @@ export class MapsService {
     }
 
     // Only corp admins and editors can create maps
-    if (![UserRole.CORP_ADMIN, UserRole.EDITOR].includes(user.role)) {
+    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
+    if (!allowedRoles.includes(user.role)) {
       throw new ForbiddenException('Insufficient permissions to create maps');
     }
 
@@ -346,8 +347,9 @@ export class MapsService {
     if (user.role === UserRole.SUPER_ADMIN) return true;
 
     // Only corp admins and editors from the same corporation can update
+    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
     if (user.corporationId === map.corporationId && 
-        [UserRole.CORP_ADMIN, UserRole.EDITOR].includes(user.role)) {
+        allowedRoles.includes(user.role)) {
       return true;
     }
 

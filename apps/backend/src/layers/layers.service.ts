@@ -307,8 +307,10 @@ export class LayersService {
     if (user.role === UserRole.SUPER_ADMIN) return true;
 
     // Only corp admins and editors from the same corporation can update
+    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
+
     if (user.corporationId === map.corporationId && 
-        [UserRole.CORP_ADMIN, UserRole.EDITOR].includes(user.role)) {
+        allowedRoles.includes(user.role)) {
       return true;
     }
 

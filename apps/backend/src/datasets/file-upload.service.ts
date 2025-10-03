@@ -20,7 +20,7 @@ export class FileUploadService {
     }
   }
 
-  getMulterConfig() {
+  getMulterConfig(): multer.Options {
     const storage = multer.diskStorage({
       destination: (req, file, cb) => {
         cb(null, this.uploadPath);
@@ -53,13 +53,13 @@ export class FileUploadService {
       }
     };
 
-    return multer({
+    return {
       storage,
       fileFilter,
       limits: {
         fileSize: this.parseFileSize(this.configService.get('MAX_FILE_SIZE', '50MB')),
       },
-    });
+    };
   }
 
   private parseFileSize(size: string): number {

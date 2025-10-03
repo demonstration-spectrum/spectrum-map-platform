@@ -89,7 +89,7 @@
                 <RouterLink
                   to="/profile"
                   class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  @click="showUserMenu = false"
+                  @click="showUserMenu.value = false"
                 >
                   Your Profile
                 </RouterLink>
@@ -138,7 +138,7 @@ const switchCorporation = () => {
 const logout = () => {
   authStore.logout()
   router.push('/login')
-  showUserMenu = false
+  showUserMenu.value = false
 }
 
 onMounted(() => {

@@ -32,7 +32,8 @@ export class DatasetsService {
     }
 
     // Only corp admins and editors can upload datasets
-    if (![UserRole.CORP_ADMIN, UserRole.EDITOR].includes(user.role)) {
+    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
+    if (!allowedRoles.includes(user.role)) {
       throw new ForbiddenException('Insufficient permissions to upload datasets');
     }
 
@@ -387,8 +388,9 @@ export class DatasetsService {
     if (user.role === UserRole.SUPER_ADMIN) return true;
 
     // Only corp admins and editors from the same corporation can update
+    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
     if (user.corporationId === dataset.corporationId && 
-        [UserRole.CORP_ADMIN, UserRole.EDITOR].includes(user.role)) {
+        allowedRoles.includes(user.role)) {
       return true;
     }
 

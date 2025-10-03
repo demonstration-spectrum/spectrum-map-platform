@@ -68,9 +68,13 @@ export class CognitoService {
             Name: 'family_name',
             Value: lastName,
           },
+          {
+            Name: 'name',
+            Value: `${firstName} ${lastName}`,
+          },
         ],
       });
-
+      
       const response = await this.cognitoClient.send(command);
       
       return {
@@ -81,6 +85,7 @@ export class CognitoService {
         confirmed: response.UserConfirmed,
       };
     } catch (error) {
+      
       console.error('Cognito registration error:', error);
       throw error;
     }

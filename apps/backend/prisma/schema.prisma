@@ -1,0 +1,222 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User roles enum
+enum UserRole {
+  SUPER_ADMIN
+  CORP_ADMIN
+  EDITOR
+  ADVISER
+}
+
+// Corporation status enum
+enum CorporationStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+// Dataset visibility enum
+enum DatasetVisibility {
+  PRIVATE
+  SHARED
+  PUBLIC
+}
+
+// Map visibility enum
+enum MapVisibility {
+  PRIVATE
+  PASSWORD_PROTECTED
+  PUBLIC
+}
+
+// Corporation model - represents tenant organizations
+model Corporation {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  status      CorporationStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relationships
+  users     User[]
+  datasets  Dataset[]
+  maps      Map[]
+  advisers  CorporationAdviser[]
+
+  @@map("corporations")
+}
+
+// User model - represents all users in the system
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  firstName    String
+  lastName     String
+  role         UserRole
+  corporationId String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // AWS Cognito integration
+  cognitoSub   String?  @unique
+
+  // Relationships
+  corporation Corporation? @relation(fields: [corporationId], references: [id], onDelete: Cascade)
+  datasets    Dataset[]
+  maps        Map[]
+  adviserAccess CorporationAdviser[]
+
+  @@map("users")
+}
+
+// Corporation Adviser relationship - many-to-many for advisers accessing multiple corporations
+model CorporationAdviser {
+  id             String   @id @default(cuid())
+  corporationId  String
+  adviserId      String
+  grantedAt      DateTime @default(now())
+  grantedBy      String   // User ID who granted access
+  isActive       Boolean  @default(true)
+
+  // Relationships
+  corporation Corporation @relation(fields: [corporationId], references: [id], onDelete: Cascade)
+  adviser     User        @relation(fields: [adviserId], references: [id], onDelete: Cascade)
+
+  @@unique([corporationId, adviserId])
+  @@map("corporation_advisers")
+}
+
+// Dataset model - represents geospatial data
+model Dataset {
+  id            String            @id @default(cuid())
+  name          String
+  description   String?
+  fileName      String
+  filePath      String
+  fileSize      Int
+  mimeType      String
+  visibility    DatasetVisibility @default(PRIVATE)
+  corporationId String
+  uploadedById  String
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // GeoServer integration
+  workspaceName String?
+  layerName     String?
+  isProcessed   Boolean           @default(false)
+
+  // Default styling (Mapbox Style Specification JSON)
+  defaultStyle  Json?
+
+  // Relationships
+  corporation Corporation @relation(fields: [corporationId], references: [id], onDelete: Cascade)
+  uploadedBy  User        @relation(fields: [uploadedById], references: [id])
+  layers      Layer[]
+  sharedWith  DatasetShare[]
+
+  @@map("datasets")
+}
+
+// Dataset sharing - allows corporations to share datasets with specific other corporations
+model DatasetShare {
+  id           String   @id @default(cuid())
+  datasetId    String
+  sharedWithId String   // Corporation ID
+  sharedAt     DateTime @default(now())
+  sharedBy     String   // User ID who shared
+
+  // Relationships
+  dataset    Dataset     @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  sharedWith Corporation @relation(fields: [sharedWithId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetId, sharedWithId])
+  @@map("dataset_shares")
+}
+
+// Map model - represents user-created maps
+model Map {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  visibility    MapVisibility @default(PRIVATE)
+  password      String?       // For password-protected maps
+  corporationId String
+  createdById   String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Map configuration (center, zoom, etc.)
+  centerLat     Float?
+  centerLng     Float?
+  zoom          Float?
+  bearing       Float?
+  pitch         Float?
+
+  // Relationships
+  corporation Corporation @relation(fields: [corporationId], references: [id], onDelete: Cascade)
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  layers      Layer[]
+
+  @@map("maps")
+}
+
+// Layer model - represents a dataset added to a map with specific styling
+model Layer {
+  id        String   @id @default(cuid())
+  mapId     String
+  datasetId String
+  name      String   // Layer name (can be different from dataset name)
+  order     Int      // Layer order in the map
+  isVisible Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Layer styling (Mapbox Style Specification JSON)
+  style Json?
+
+  // Relationships
+  map     Map     @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@unique([mapId, datasetId])
+  @@map("layers")
+}
+
+// Audit log for security and compliance
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // e.g., "CREATE_DATASET", "DELETE_MAP", "GRANT_ADVISER_ACCESS"
+  resource  String   // e.g., "dataset:123", "map:456"
+  details   Json?    // Additional context
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// System configuration
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_config")
+}

@@ -1,0 +1,42 @@
+{
+  "name": "spectrum-map-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Spectrum Map Platform",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
+    "type-check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.3.8",
+    "vue-router": "^4.2.5",
+    "pinia": "^2.1.7",
+    "mapbox-gl": "^2.15.0",
+    "@mapbox/mapbox-gl-geocoder": "^5.0.0",
+    "axios": "^1.6.2",
+    "@headlessui/vue": "^1.7.16",
+    "@heroicons/vue": "^2.0.18",
+    "tailwindcss": "^3.3.6",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "clsx": "^2.0.0",
+    "lucide-vue-next": "^0.294.0",
+    "vue-toastification": "^2.0.0-rc.5",
+    "vue-draggable-plus": "^0.3.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.5.0",
+    "@vue/tsconfig": "^0.4.0",
+    "typescript": "~5.2.0",
+    "vue-tsc": "^1.8.22",
+    "vite": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.45.0",
+    "eslint-plugin-vue": "^9.17.0",
+    "@types/mapbox-gl": "^2.7.18"
+  }
+}

@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with PostGIS extension
+  database:
+    image: postgis/postgis:15-3.3
+    container_name: spectrum_map_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spectrum_map}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./docker/postgis/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - spectrum_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-spectrum_map}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # GeoServer for serving vector tiles
+  geoserver:
+    image: kartoza/geoserver:2.23.0
+    container_name: spectrum_map_geoserver
+    environment:
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_PASSWORD:-geoserver}
+      GEOSERVER_ADMIN_USER: ${GEOSERVER_USER:-admin}
+      GEOWEBCACHE_CACHE_DIR: /opt/geoserver/data_dir/gwc
+      GEOSERVER_DATA_DIR: /opt/geoserver/data_dir
+      GEOSERVER_LOG_LEVEL: INFO
+      GEOSERVER_LOG_LOCATION: /opt/geoserver/data_dir/logs/geoserver.log
+      GEOSERVER_OPTS: "-Xms512m -Xmx2048m"
+    ports:
+      - "8080:8080"
+    volumes:
+      - geoserver_data:/opt/geoserver/data_dir
+      - ./docker/geoserver_data:/opt/geoserver/data_dir
+    networks:
+      - spectrum_network
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/geoserver/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NestJS Backend API
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.dev
+    container_name: spectrum_map_backend
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@database:5432/${POSTGRES_DB:-spectrum_map}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-here}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      GEOSERVER_URL: http://geoserver:8080/geoserver
+      GEOSERVER_USER: ${GEOSERVER_USER:-admin}
+      GEOSERVER_PASSWORD: ${GEOSERVER_PASSWORD:-geoserver}
+      MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+      - ./uploads:/app/uploads
+    networks:
+      - spectrum_network
+    depends_on:
+      database:
+        condition: service_healthy
+    command: npm run start:dev
+
+  # Vue.js Frontend
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile.dev
+    container_name: spectrum_map_frontend
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN}
+      VITE_GEOSERVER_URL: http://localhost:8080/geoserver
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+    networks:
+      - spectrum_network
+    command: npm run dev
+
+volumes:
+  postgis_data:
+    driver: local
+  geoserver_data:
+    driver: local
+
+networks:
+  spectrum_network:
+    driver: bridge

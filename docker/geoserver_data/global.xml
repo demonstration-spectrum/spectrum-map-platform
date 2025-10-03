@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<global>
+  <id>GlobalImpl--570a4f49:150b2e9f4f0:-7ffb</id>
+  <settings>
+    <id>SettingsInfoImpl--570a4f49:150b2e9f4f0:-7ffa</id>
+    <contact>
+      <id>ContactInfoImpl</id>
+      <addressCity>New York</addressCity>
+      <addressCountry>United States</addressCountry>
+      <addressType>Work</addressType>
+      <contactEmail>admin@spectrummap.com</contactEmail>
+      <contactOrganization>Spectrum Map Platform</contactOrganization>
+      <contactPerson>Administrator</contactPerson>
+      <contactPosition>System Administrator</contactPosition>
+    </contact>
+    <charset>UTF-8</charset>
+    <numDecimals>4</numDecimals>
+    <onlineResource>http://localhost:8080/geoserver</onlineResource>
+    <proxyBaseUrl>http://localhost:8080/geoserver</proxyBaseUrl>
+    <schemaBaseUrl>http://localhost:8080/geoserver/schemas</schemaBaseUrl>
+    <verbose>false</verbose>
+    <verboseExceptions>false</verboseExceptions>
+  </settings>
+  <jai>
+    <id>JAIInfoImpl</id>
+    <allowInterpolation>true</allowInterpolation>
+    <recycling>false</recycling>
+    <tilePriority>5</tilePriority>
+    <tileThreads>7</tileThreads>
+    <memoryCapacity>0.5</memoryCapacity>
+    <memoryThreshold>0.75</memoryThreshold>
+    <imageIOCache>false</imageIOCache>
+    <pngAcceleration>true</pngAcceleration>
+    <jpegAcceleration>true</jpegAcceleration>
+    <allowNativeMosaic>false</allowNativeMosaic>
+    <allowNativeWarp>false</allowNativeWarp>
+  </jai>
+  <coverageAccess>
+    <id>CoverageAccessInfoImpl</id>
+    <maxPoolSize>5</maxPoolSize>
+    <corePoolSize>5</corePoolSize>
+    <keepAliveTime>30000</keepAliveTime>
+    <queueType>UNBOUNDED</queueType>
+    <imageIOCacheThreshold>4096</imageIOCacheThreshold>
+  </coverageAccess>
+  <updateSequence>0</updateSequence>
+  <featureTypeCacheSize>0</featureTypeCacheSize>
+  <globalServices>true</globalServices>
+  <xmlPostRequestLogBufferSize>1024</xmlPostRequestLogBufferSize>
+  <xmlExternalEntitiesEnabled>false</xmlExternalEntitiesEnabled>
+</global>

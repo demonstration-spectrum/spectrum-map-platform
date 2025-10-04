@@ -231,7 +231,7 @@ const selectLayer = (layer: Layer) => {
 
 const toggleLayerVisibility = async (layer: Layer) => {
   try {
-    await layersStore.toggleLayerVisibility(layer.id)
+    await layersStore.toggleLayerVisibility(layer.mapId, layer.id)
     const updatedLayer = layers.value.find(l => l.id === layer.id)
     if (updatedLayer && mapboxMap.value) {
       toggleMapLayerVisibility(mapboxMap.value, `layer-${layer.id}`, updatedLayer.isVisible)
@@ -245,7 +245,7 @@ const removeLayer = async (layer: Layer) => {
   if (!confirm('Are you sure you want to remove this layer?')) return
 
   try {
-    await layersStore.removeLayer(layer.id)
+    await layersStore.removeLayer(layer.mapId, layer.id)
     if (mapboxMap.value) {
       removeLayerFromMap(mapboxMap.value, `layer-${layer.id}`, `source-${layer.id}`)
     }

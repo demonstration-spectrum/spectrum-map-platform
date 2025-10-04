@@ -74,10 +74,10 @@ export const useLayersStore = defineStore('layers', () => {
     }
   }
 
-  const removeLayer = async (id: string) => {
+  const removeLayer = async (mapId: string, id: string) => {
     isLoading.value = true
     try {
-      await api.delete(`/layers/${id}`)
+      await api.delete(`/maps/${mapId}/layers/${id}`)
       layers.value = layers.value.filter(l => l.id !== id)
       
       if (currentLayer.value?.id === id) {
@@ -91,10 +91,10 @@ export const useLayersStore = defineStore('layers', () => {
     }
   }
 
-  const toggleLayerVisibility = async (id: string) => {
+  const toggleLayerVisibility = async (mapId: string, id: string) => {
     isLoading.value = true
     try {
-      const response = await api.patch(`/layers/${id}/toggle-visibility`)
+      const response = await api.patch(`/maps/${mapId}/layers/${id}/toggle-visibility`)
       const updatedLayer = response.data
       
       const index = layers.value.findIndex(l => l.id === id)

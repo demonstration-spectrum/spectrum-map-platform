@@ -398,7 +398,9 @@ export class DatasetsService {
   }
 
   private async processDataset(dataset: any): Promise<void> {
-    // This is a simplified version - in a real implementation, you would:
+
+
+
     // 1. Parse the uploaded file (GeoJSON, Shapefile, etc.)
     // 2. Import it into PostGIS
     // 3. Create a GeoServer workspace and layer
@@ -406,12 +408,89 @@ export class DatasetsService {
 
     const workspaceName = `corp_${dataset.corporationId}`;
     const layerName = `dataset_${dataset.id}`;
+    const filePath = dataset.filePath;
+    const fileExt = path.extname(filePath).toLowerCase();
 
-    // Create workspace if it doesn't exist
+    // 1. Parse and convert file to PostGIS-compatible format (GeoJSON or Shapefile)
+    // We'll use gdal-async for robust geospatial file handling
+    const gdal = require('gdal-async');
+    let ogrLayer;
+    try {
+      const ds = gdal.open(filePath);
+      ogrLayer = ds.layers.get(0);
+      if (!ogrLayer) throw new Error('No layer found in geospatial file');
+    } catch (err) {
+      throw new BadRequestException('Failed to parse geospatial file: ' + err.message);
+    }
+
+    // 2. Import into PostGIS
+    // We'll use pg for direct SQL, as Prisma does not support geometry columns well
+    const { Pool } = require('pg');
+    
+    // You may want to move this connection string to config/env
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+    const client = await pool.connect();
+    console.log('Connected to Postgres for importing dataset');
+
+    const tableName = `dataset_${dataset.id}`;
+    try {
+      // Drop table if exists (for reprocessing)
+      await client.query(`DROP TABLE IF EXISTS "${tableName}"`);
+
+      // Create table with geometry column (SRID 4326 for WGS84)
+      // We'll infer columns from the OGR layer fields
+      let fieldDefs = [];
+      ogrLayer.fields.forEach((def: any) => {
+        // Map OGR field types to Postgres types
+        let type = 'text';
+        switch (def.type) {
+          case 'Integer': type = 'integer'; break;
+          case 'Real': type = 'float'; break;
+          case 'Date': type = 'date'; break;
+        }
+        fieldDefs.push(`"${def.name}" ${type}`);
+      });
+      fieldDefs.push('geom geometry');
+      await client.query(`CREATE TABLE "${tableName}" (${fieldDefs.join(', ')})`);
+      // Insert features
+      const insertPromises = [];
+      ogrLayer.features.forEach((feature: any) => {
+        const values = ogrLayer.fields.map((def: any) => feature.fields.get(def.name));
+        // Geometry as WKT
+        const geom = feature.getGeometry();
+        if (!geom) return; // skip features with no geometry
+        const geomWkt = feature.getGeometry().toWKT();
+        const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+        //console.log('Inserting feature with values:', values.length, 'and placeholders:', placeholders.length);
+        const sql = `INSERT INTO "${tableName}" VALUES (${placeholders}, ST_GeomFromText($${values.length + 1}, 4326))`;
+        //insertPromises.push(client.query(sql, [...values, geomWkt]));
+        insertPromises.push(
+          client.query(sql, [...values, geomWkt]).catch(err => {
+            //console.error('Insert error:', err, { sql, values, geomWkt });
+            throw err; // rethrow to propagate error to Promise.all
+          })
+        );
+      });
+      await Promise.all(insertPromises);
+      console.log(`Imported ${insertPromises.length} features into PostGIS table ${tableName}`);
+    } catch (err) {
+      await client.release();
+      throw new BadRequestException('Failed to import data into PostGIS: ' + err.message);
+    }
+    await client.release();
+
+    // 3. Register the new table as a layer in GeoServer
     await this.geoserverService.createWorkspace(workspaceName);
+    await this.geoserverService.publishPostgisLayer({
+      workspace: workspaceName,
+      layer: layerName,
+      table: tableName,
+      srid: 4326,
+    });
 
-    // For now, we'll just update the dataset with placeholder values
-    // In a real implementation, you would process the file and create the actual layer
+    // 4. Update the dataset record
     await this.prisma.dataset.update({
       where: { id: dataset.id },
       data: {

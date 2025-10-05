@@ -15,6 +15,38 @@ export class GeoserverService {
     this.password = this.configService.get('GEOSERVER_PASSWORD', 'geoserver');
   }
 
+
+  /**
+   * Publishes a PostGIS table as a GeoServer layer (creates datastore and layer if needed)
+   * @param opts { workspace, layer, table, srid }
+   */
+  async publishPostgisLayer(opts: { workspace: string; layer: string; table: string; srid: number }): Promise<boolean> {
+    // Connection params from environment/config
+    const connectionParams = {
+      host: this.configService.get('POSTGRES_HOST', 'localhost'),
+      port: this.configService.get('POSTGRES_PORT', '5432'),
+      database: this.configService.get('POSTGRES_DB', 'postgres'),
+      user: this.configService.get('POSTGRES_USER', 'postgres'),
+      password: this.configService.get('POSTGRES_PASSWORD', 'password'),
+      table: opts.table,
+    };
+    const storeName = `store_${opts.workspace}`;
+    // 1. Create datastore (idempotent)
+    try {
+      await this.createDataStore(opts.workspace, storeName, connectionParams);
+    } catch (error) {
+        if (error.response?.data && error.response?.data.includes('already exists')) {
+          console.log(`Datastore '${storeName}' already exists.`);
+        } else {
+          throw error; // Rethrow unexpected errors
+        }
+    }
+    
+    // 2. Create layer (featureType)
+
+    return this.createLayer(opts.workspace, storeName, opts.layer);
+  }
+
   private getAuthHeader(): string {
     return Buffer.from(`${this.username}:${this.password}`).toString('base64');
   }
@@ -41,8 +73,13 @@ export class GeoserverService {
       this.logger.log(`Workspace ${workspaceName} created successfully`);
       return true;
     } catch (error) {
-      this.logger.error(`Failed to create workspace ${workspaceName}:`, error.response?.data || error.message);
-      return false;
+        if (error.response?.data && error.response?.data.includes('already exists')) {
+          console.log(`Workspace '${workspaceName}' already exists.`);
+          return true;
+        } else {
+          this.logger.error(`Failed to create workspace ${workspaceName}:`, error.response?.data || error.message);
+          return false; 
+        }
     }
   }
 
@@ -78,8 +115,14 @@ export class GeoserverService {
       this.logger.log(`DataStore ${storeName} created successfully in workspace ${workspaceName}`);
       return true;
     } catch (error) {
-      this.logger.error(`Failed to create datastore ${storeName}:`, error.response?.data || error.message);
-      return false;
+      if (error.response?.data && error.response?.data.includes('already exists')) {
+        console.log(`Datastore '${storeName}' already exists.`);
+        return true;
+      } else {
+        this.logger.error(`Failed to create datastore ${storeName}:`, error.response?.data || error.message);
+        return false;
+      }
+
     }
   }
 
@@ -90,7 +133,27 @@ export class GeoserverService {
           <name>${layerName}</name>
           <nativeName>${layerName}</nativeName>
           <title>${layerName}</title>
-          <abstract>Layer for ${layerName}</abstract>
+          <abstract>A description of the layer.</abstract>
+
+          <srs>EPSG:4326</srs> 
+          <nativeCRS>EPSG:4326</nativeCRS> 
+
+          <nativeBoundingBox>
+            <minx>-180.0</minx>
+            <maxx>180.0</maxx>
+            <miny>-90.0</miny>
+            <maxy>90.0</maxy>
+            <crs>EPSG:4326</crs>
+          </nativeBoundingBox>
+          <latLonBoundingBox>
+            <minx>-180.0</minx>
+            <maxx>180.0</maxx>
+            <miny>-90.0</miny>
+            <maxy>90.0</maxy>
+            <crs>EPSG:4326</crs>
+          </latLonBoundingBox>
+
+          <projectionPolicy>FORCE_DECLARED</projectionPolicy>
           <enabled>true</enabled>
           <advertised>true</advertised>
         </featureType>

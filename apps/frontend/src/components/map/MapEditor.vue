@@ -217,8 +217,10 @@ const initializeMap = () => {
   })
 
   // Add layers to map
+  
   layers.value.forEach(layer => {
     if (layer.dataset.workspaceName && layer.dataset.layerName) {
+      //console.log('Adding layer to map:', layer)
       addLayerToMap(mapboxMap.value!, layer, import.meta.env.VITE_GEOSERVER_URL)
     }
   })

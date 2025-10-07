@@ -38,7 +38,6 @@ services:
       - "8080:8080"
     volumes:
       - geoserver_data:/opt/geoserver/data_dir
-      - ./docker/geoserver_data:/opt/geoserver/data_dir
     networks:
       - spectrum_network
     depends_on:
@@ -72,7 +71,7 @@ services:
     volumes:
       - ./apps/backend:/app
       - /app/node_modules
-      - ./uploads:/app/uploads
+      - uploads_data:/app/uploads
     networks:
       - spectrum_network
     depends_on:
@@ -103,6 +102,8 @@ volumes:
   postgis_data:
     driver: local
   geoserver_data:
+    driver: local
+  uploads_data:
     driver: local
 
 networks:

@@ -8,7 +8,12 @@ cp env.example .env
 
 npm run docker:up
 npm run db:migrate
+npm run db:generate
 npm run dev
+
+
+# Create demo users and corporations:
+npm run prisma:seed
 
 #####
 

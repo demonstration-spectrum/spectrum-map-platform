@@ -4,7 +4,7 @@ services:
   # PostgreSQL with PostGIS extension
   database:
     image: postgis/postgis:15-3.3
-    container_name: spectrum_map_db
+    container_name: ${POSTGRES_HOST:-spectrum_map_db}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-spectrum_map}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -87,7 +87,7 @@ services:
     container_name: spectrum_map_frontend
     environment:
       VITE_API_URL: http://localhost:3000/api/v1
-      VITE_MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN}
+      VITE_MAPBOX_ACCESS_TOKEN: ${VITE_MAPBOX_ACCESS_TOKEN}
       VITE_GEOSERVER_URL: http://localhost:8080/geoserver
     ports:
       - "5173:5173"

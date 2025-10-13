@@ -50,10 +50,10 @@ export const useLayersStore = defineStore('layers', () => {
     }
   }
 
-  const updateLayer = async (id: string, layerData: Partial<CreateLayerRequest>) => {
+  const updateLayer = async (mapId: string, id: string, layerData: Partial<CreateLayerRequest>) => {
     isLoading.value = true
     try {
-      const response = await api.patch(`/layers/${id}`, layerData)
+      const response = await api.patch(`/maps/${mapId}/layers/${id}`, layerData)
       const updatedLayer = response.data
       
       const index = layers.value.findIndex(l => l.id === id)

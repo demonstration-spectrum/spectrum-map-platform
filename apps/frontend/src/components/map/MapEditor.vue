@@ -80,7 +80,7 @@
       </div>
     </div>
 
-    <!-- Map Container -->
+      <!-- Map Container -->
     <div class="flex-1 relative">
       <div ref="mapContainer" class="w-full h-full"></div>
       
@@ -93,6 +93,44 @@
         >
           {{ isSaving ? 'Saving...' : 'Save Map' }}
         </button>
+      </div>
+    </div>
+
+    <!-- Style Editor Drawer -->
+    <div v-if="currentLayer" class="fixed right-0 top-0 h-full w-96 bg-white border-l border-gray-200 z-40">
+      <div class="p-4 border-b">
+        <h3 class="text-lg font-medium">Style: {{ currentLayer.name }}</h3>
+        <p class="text-sm text-gray-500">Dataset: {{ currentLayer.dataset?.name }}</p>
+      </div>
+      <div class="p-4 overflow-y-auto h-[calc(100%-64px)]">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Fill color</label>
+            <input type="color" v-model="currentLayer.style._simple.fillColor" class="w-16 h-8 p-0" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Outline color</label>
+            <input type="color" v-model="currentLayer.style._simple.outlineColor" class="w-16 h-8 p-0" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Fill opacity</label>
+            <input type="range" min="0" max="1" step="0.01" v-model.number="currentLayer.style._simple.fillOpacity" />
+            <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.fillOpacity }}</div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Line width</label>
+            <input type="range" min="0" max="10" step="0.5" v-model.number="currentLayer.style._simple.lineWidth" />
+            <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.lineWidth }}</div>
+          </div>
+
+          <div class="flex justify-end space-x-2">
+            <button @click="closeStyleEditor" class="btn-secondary">Close</button>
+            <button @click="applyStyleChanges" class="btn-primary">Apply</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -153,7 +191,7 @@ import { useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useLayersStore } from '@/stores/layers'
 import { useDatasetsStore } from '@/stores/datasets'
-import { createMap, addLayerToMap, removeLayerFromMap, toggleLayerVisibility as toggleMapLayerVisibility } from '@/utils/mapbox'
+import { createMap, addLayerToMap, removeLayerFromMap, toggleLayerVisibility as toggleMapLayerVisibility, updateLayerStyle } from '@/utils/mapbox'
 import type { Map, Layer, Dataset } from '@/types'
 import mapboxgl from 'mapbox-gl'
 
@@ -227,8 +265,66 @@ const initializeMap = () => {
 }
 
 const selectLayer = (layer: Layer) => {
-  currentLayer.value = layer
-  // TODO: Show layer styling panel
+  // Clone to avoid mutating store object directly
+  const cloned = JSON.parse(JSON.stringify(layer))
+  // Ensure a _simple style container for UI-friendly fields
+  cloned.style = cloned.style || {}
+  cloned.style._simple = cloned.style._simple || {
+    fillColor: cloned.style?.paint?.['fill-color'] || (cloned.dataset.defaultStyle?.paint?.['fill-color'] || '#3b82f6'),
+    fillOpacity: cloned.style?.paint?.['fill-opacity'] ?? (cloned.dataset.defaultStyle?.paint?.['fill-opacity'] ?? 0.6),
+    outlineColor: cloned.style?.paint?.['fill-outline-color'] || (cloned.dataset.defaultStyle?.paint?.['fill-outline-color'] || '#1e40af'),
+    lineWidth: cloned.style?.paint?.['line-width'] ?? (cloned.dataset.defaultStyle?.paint?.['line-width'] ?? 1),
+  }
+  currentLayer.value = cloned
+}
+
+// Apply style changes from the editor to the map and persist via store
+const applyStyleChanges = async () => {
+  if (!currentLayer.value) return
+
+  // Ensure style object exists
+  const style = currentLayer.value.style || {}
+  // Normalize into Mapbox paint/layout keys expected by utils/mapbox
+  const paint: any = { ...(style.paint || {}) }
+  const layout: any = { ...(style.layout || {}) }
+
+  // If editing polygon/circle/line styles, map our simpler fields to paint properties
+  if (style._simple) {
+    const s = style._simple
+    if (s.fillColor) paint['fill-color'] = s.fillColor
+    if (typeof s.fillOpacity !== 'undefined') paint['fill-opacity'] = Number(s.fillOpacity)
+    if (s.outlineColor) paint['fill-outline-color'] = s.outlineColor
+    if (typeof s.lineWidth !== 'undefined') paint['line-width'] = Number(s.lineWidth)
+    if (s.circleColor) paint['circle-color'] = s.circleColor
+    if (typeof s.circleRadius !== 'undefined') paint['circle-radius'] = Number(s.circleRadius)
+  }
+
+  const newStyle = {
+    ...style,
+    paint,
+    layout
+  }
+
+  try {
+    // Persist to backend/store
+    const updatedLayer = await layersStore.updateLayer(currentLayer.value.mapId, currentLayer.value.id, { style: newStyle })
+
+    // Update local currentLayer to reflect persisted data
+    currentLayer.value = JSON.parse(JSON.stringify(updatedLayer))
+
+    // Apply to map visually
+    if (mapboxMap.value && currentLayer.value) {
+      const layerId = `layer-${currentLayer.value.id}`
+      // use helper to update paint/layout
+      updateLayerStyle(mapboxMap.value, layerId, { id: layerId, type: newStyle.type || 'fill', paint: newStyle.paint, layout: newStyle.layout })
+    }
+  } catch (err) {
+    console.error('Failed to apply style changes:', err)
+  }
+}
+
+const closeStyleEditor = () => {
+  currentLayer.value = null
 }
 
 const toggleLayerVisibility = async (layer: Layer) => {

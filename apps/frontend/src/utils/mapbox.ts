@@ -33,18 +33,54 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
       maxzoom: 22
     });
     
-    // Apply layer style
-    const style = layer.style || layer.dataset.defaultStyle || getDefaultLayerStyle(layer.dataset.mimeType)
-    console.log('Layer Style:', style);
-    map.addLayer({
+    // Apply layer style (normalize via createStyleFromLayer so `type` is always present)
+    const style = createStyleFromLayer(layer)
+    console.log('Layer Style:', style)
+    const layerType = style?.type || 'fill'
+    if (!style || !style.type) {
+      console.warn('Unable to determine layer type for layer', layer.id, 'falling back to fill')
+    }
+
+    // Sanitize paint/layout/filter to avoid Mapbox validation errors when
+    // style contains properties that don't apply to the chosen layer type.
+    const sanitizeStyle = (s: any, type: string) => {
+      const out: any = {}
+
+      if (s?.paint && typeof s.paint === 'object') {
+        out.paint = {}
+        Object.keys(s.paint).forEach((k) => {
+          // include paint keys that are prefixed for this type (e.g., 'fill-' for fill)
+          if (k.startsWith(`${type}-`)) {
+            out.paint[k] = s.paint[k]
+          }
+        })
+      }
+
+      if (s?.layout && typeof s.layout === 'object') {
+        out.layout = { ...s.layout }
+      }
+
+      if (Array.isArray(s?.filter)) {
+        out.filter = s.filter
+      }
+
+      return out
+    }
+
+    const sanitized = sanitizeStyle(style, layerType)
+
+    const layerDef: any = {
       id: layerId,
-      type: style.type,
+      type: layerType,
       source: sourceId,
       'source-layer': layer.dataset.layerName || 'default',
-      paint: style.paint,
-      layout: style.layout,
-      filter: style.filter
-    })
+    }
+
+    if (sanitized.paint) layerDef.paint = sanitized.paint
+    if (sanitized.layout) layerDef.layout = sanitized.layout
+    if (sanitized.filter) layerDef.filter = sanitized.filter
+
+    map.addLayer(layerDef)
 
   });
  
@@ -83,11 +119,30 @@ export const toggleLayerVisibility = (map: mapboxgl.Map, layerId: string, visibl
 }
 
 export const reorderLayers = (map: mapboxgl.Map, layerIds: string[]) => {
-  layerIds.forEach((layerId, index) => {
-    if (map.getLayer(layerId)) {
-      map.moveLayer(layerId, index)
+  // The incoming layerIds array is ordered bottom-to-top (index 0 is bottom).
+  // Mapbox's moveLayer accepts (id, beforeId?) where beforeId is another layer id.
+  // To achieve the requested stacking, move each layer before the next existing layer.
+  for (let i = 0; i < layerIds.length; i++) {
+    const layerId = `layer-${layerIds[i]}`
+    if (!map.getLayer(layerId)) continue
+
+    // Find the next layer in the list that exists on the map
+    let beforeId: string | undefined
+    for (let j = i + 1; j < layerIds.length; j++) {
+      const candidate = `layer-${layerIds[j]}`
+      if (map.getLayer(candidate)) {
+        beforeId = candidate
+        break
+      }
     }
-  })
+
+    if (beforeId) {
+      map.moveLayer(layerId, beforeId)
+    } else {
+      // No later layer found; move this layer to the top
+      map.moveLayer(layerId)
+    }
+  }
 }
 
 export const getDefaultLayerStyle = (mimeType: string): LayerStyle => {

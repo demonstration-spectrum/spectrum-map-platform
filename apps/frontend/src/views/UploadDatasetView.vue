@@ -23,12 +23,21 @@
                 <div class="flex text-sm text-gray-600">
                   <label for="file" class="relative cursor-pointer bg-white rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
                     <span>Upload a file</span>
-                    <input
+                    <!-- <input
                       id="file"
                       ref="fileInput"
                       type="file"
                       accept=".geojson,.json,.shp,.zip,.tab"
                       class="sr-only"
+                      @change="handleFileSelect"
+                    /> -->
+                    <input
+                      id="file"
+                      ref="fileInput"
+                      type="file"
+                      accept=".geojson,.json,.shp,.shx,.dbf,.prj,.zip,.tab,.dat,.id,.map"
+                      class="sr-only"
+                      multiple
                       @change="handleFileSelect"
                     />
                   </label>
@@ -40,11 +49,17 @@
               </div>
             </div>
             
-            <div v-if="selectedFile" class="mt-2 p-3 bg-gray-50 rounded-md">
+            <div v-if="selectedFiles.length" class="mt-2 p-3 bg-gray-50 rounded-md">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900">{{ selectedFile.name }}</p>
-                  <p class="text-xs text-gray-500">{{ formatFileSize(selectedFile.size) }}</p>
+                  <ul class="space-y-1">
+                    <li v-for="(f, idx) in selectedFiles" :key="idx" class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm font-medium text-gray-900">{{ f.name }}</p>
+                        <p class="text-xs text-gray-500">{{ formatFileSize(f.size) }}</p>
+                      </div>
+                    </li>
+                  </ul>
                 </div>
                 <button
                   type="button"
@@ -124,7 +139,7 @@
             </RouterLink>
             <button
               type="submit"
-              :disabled="isLoading || !selectedFile"
+              :disabled="isLoading || !selectedFiles.length"
               class="btn-primary"
             >
               {{ isLoading ? 'Uploading...' : 'Upload Dataset' }}
@@ -142,7 +157,8 @@ import { useRouter } from 'vue-router'
 import { useDatasetsStore } from '@/stores/datasets'
 import { useToast } from 'vue-toastification'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import type { CreateDatasetRequest, DatasetVisibility } from '@/types'
+import { DatasetVisibility } from '@/types'
+import type { CreateDatasetRequest } from '@/types'
 
 const router = useRouter()
 const datasetsStore = useDatasetsStore()
@@ -150,11 +166,12 @@ const toast = useToast()
 
 const fileInput = ref<HTMLInputElement>()
 const selectedFile = ref<File | null>(null)
+const selectedFiles = ref<File[]>([])
 
 const form = ref<CreateDatasetRequest>({
   name: '',
   description: '',
-  visibility: 'PRIVATE'
+  visibility: DatasetVisibility.PRIVATE
 })
 
 const isLoading = ref(false)
@@ -163,43 +180,44 @@ const error = ref('')
 
 const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  
-  if (file) {
-    // Validate file type
-    const allowedTypes = [
-      'application/geo+json',
-      'application/json',
-      'application/zip',
-      'application/octet-stream'
-    ]
-    
-    const allowedExtensions = ['.geojson', '.json', '.shp', '.zip', '.tab']
+  const files = Array.from(target.files || [])
+
+  if (files.length === 0) return
+
+  // Basic validation for each selected file
+  const allowedTypes = [
+    'application/geo+json',
+    'application/json',
+    'application/zip',
+    'application/octet-stream'
+  ]
+  const allowedExtensions = ['.geojson', '.json', '.shp', '.shx', '.dbf', '.prj', '.zip', '.tab', '.dat', '.id', '.map']
+
+  for (const file of files) {
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
-    
     if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
-      error.value = 'Invalid file type. Please upload a GeoJSON, Shapefile, or MapInfo Tab file.'
+      error.value = `Invalid file type: ${file.name}. Please upload GeoJSON, Shapefile, or MapInfo files.`
       return
     }
-    
-    // Validate file size (50MB limit)
+
     if (file.size > 50 * 1024 * 1024) {
-      error.value = 'File size must be less than 50MB.'
+      error.value = `File ${file.name} must be less than 50MB.`
       return
     }
-    
-    selectedFile.value = file
-    error.value = ''
-    
-    // Auto-fill name if not provided
-    if (!form.value.name) {
-      form.value.name = file.name.replace(/\.[^/.]+$/, '')
-    }
+  }
+
+  selectedFiles.value = files
+  selectedFile.value = files[0]
+  error.value = ''
+
+  if (!form.value.name) {
+    form.value.name = selectedFile.value.name.replace(/\.[^/.]+$/, '')
   }
 }
 
 const clearFile = () => {
   selectedFile.value = null
+  selectedFiles.value = []
   if (fileInput.value) {
     fileInput.value.value = ''
   }
@@ -213,9 +231,9 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const handleSubmit = async () => {
-  if (!selectedFile.value) {
-    error.value = 'Please select a file to upload'
+  const handleSubmit = async () => {
+  if (!selectedFiles.value.length) {
+    error.value = 'Please select file(s) to upload'
     return
   }
 
@@ -229,25 +247,34 @@ const handleSubmit = async () => {
   error.value = ''
 
   try {
-    // Simulate upload progress
-    const progressInterval = setInterval(() => {
-      if (uploadProgress.value < 90) {
-        uploadProgress.value += Math.random() * 10
+    const newDataset = await datasetsStore.uploadDataset(selectedFiles.value, form.value)
+    
+    toast.info('Dataset upload started. Processing in the background...')
+    
+    // Poll for status
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusRes = await datasetsStore.pollDatasetStatus(newDataset.id);
+        if (statusRes.status === 'COMPLETED') {
+          clearInterval(pollInterval);
+          toast.success('Dataset processed successfully!');
+          router.push('/datasets');
+        } else if (statusRes.status === 'FAILED') {
+          clearInterval(pollInterval);
+          toast.error(`Dataset processing failed: ${statusRes.error}`);
+          error.value = `Dataset processing failed: ${statusRes.error}`;
+          isLoading.value = false;
+        }
+      } catch (err) {
+        clearInterval(pollInterval);
+        toast.error('Error checking dataset status.');
+        isLoading.value = false;
       }
-    }, 200)
+    }, 3000);
 
-    const newDataset = await datasetsStore.uploadDataset(selectedFile.value, form.value)
-    
-    clearInterval(progressInterval)
-    uploadProgress.value = 100
-    
-    toast.success('Dataset uploaded successfully!')
-    router.push('/datasets')
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to upload dataset. Please try again.'
-  } finally {
     isLoading.value = false
-    uploadProgress.value = 0
   }
 }
 </script>

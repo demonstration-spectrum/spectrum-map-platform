@@ -57,11 +57,15 @@ export const useDatasetsStore = defineStore('datasets', () => {
     }
   }
 
-  const uploadDataset = async (file: File, datasetData: CreateDatasetRequest) => {
+  const uploadDataset = async (file: File | File[], datasetData: CreateDatasetRequest) => {
     isLoading.value = true
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      if (Array.isArray(file)) {
+        for (const f of file) formData.append('files', f)
+      } else {
+        formData.append('files', file)
+      }
       formData.append('name', datasetData.name)
       if (datasetData.description) formData.append('description', datasetData.description)
       formData.append('visibility', datasetData.visibility)
@@ -141,6 +145,16 @@ export const useDatasetsStore = defineStore('datasets', () => {
     }
   }
 
+  const pollDatasetStatus = async (id: string) => {
+    try {
+      const response = await api.get(`/datasets/${id}/status`);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to get status for dataset ${id}:`, error);
+      throw error;
+    }
+  }
+
   const setCurrentDataset = (dataset: Dataset | null) => {
     currentDataset.value = dataset
   }
@@ -157,6 +171,7 @@ export const useDatasetsStore = defineStore('datasets', () => {
     updateDataset,
     deleteDataset,
     shareDataset,
+    pollDatasetStatus,
     setCurrentDataset
   }
 })

@@ -9,7 +9,7 @@ import {
   UseGuards,
   Request,
   UseInterceptors,
-  UploadedFile,
+  UploadedFiles,
   Query,
 } from '@nestjs/common';
 // import { FileInterceptor } from '@nestjs/platform-express';
@@ -41,10 +41,10 @@ export class DatasetsController {
     schema: {
       type: 'object',
       properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'Geospatial file (GeoJSON, Shapefile, MapInfo Tab)',
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description: 'Geospatial file(s) (GeoJSON, Shapefile parts, MapInfo Tab parts)',
         },
         name: {
           type: 'string',
@@ -71,13 +71,27 @@ export class DatasetsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async create(
     @Body() createDatasetDto: CreateDatasetDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() files: Express.Multer.File[],
     @Request() req,
   ) {
-    if (!file) {
-      throw new Error('File is required');
+    if (!files || files.length === 0) {
+      throw new Error('File(s) are required');
     }
-    return this.datasetsService.create(createDatasetDto, file, req.user.id);
+
+    // Validate the uploaded set (geojson / shapefile / mapinfo)
+    const validation = this.fileUploadService.validateFileSet(files as any);
+
+    // Choose a representative file to store in dataset record (first matching primary file)
+    let primaryFile = files[0];
+    if (validation.type === 'geojson') {
+      primaryFile = files[0];
+    } else if (validation.type === 'shapefile') {
+      primaryFile = files.find(f => f.originalname.toLowerCase().endsWith('.shp')) || files[0];
+    } else if (validation.type === 'mapinfo') {
+      primaryFile = files.find(f => f.originalname.toLowerCase().endsWith('.tab')) || files[0];
+    }
+
+    return this.datasetsService.create(createDatasetDto, primaryFile, req.user.id, files);
   }
 
   @Get()
@@ -117,6 +131,15 @@ export class DatasetsController {
   @ApiResponse({ status: 404, description: 'Dataset not found' })
   async findOne(@Param('id') id: string, @Request() req) {
     return this.datasetsService.findOne(id, req.user.id);
+  }
+
+  @Get(':id/status')
+  @ApiOperation({ summary: 'Get dataset processing status' })
+  @ApiResponse({ status: 200, description: 'Dataset status retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  @ApiResponse({ status: 404, description: 'Dataset not found' })
+  async getStatus(@Param('id') id: string, @Request() req) {
+    return this.datasetsService.getProcessingStatus(id, req.user.id);
   }
 
   @Patch(':id')

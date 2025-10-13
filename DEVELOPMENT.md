@@ -13,6 +13,7 @@ npm run dev
 
 
 # Create demo users and corporations:
+cd apps/backend
 npm run prisma:seed
 
 #####

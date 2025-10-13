@@ -5,7 +5,7 @@ import { GeoserverService } from './geoserver.service';
 import { CreateDatasetDto } from './dto/create-dataset.dto';
 import { UpdateDatasetDto } from './dto/update-dataset.dto';
 import { ShareDatasetDto } from './dto/share-dataset.dto';
-import { UserRole, DatasetVisibility } from '@prisma/client';
+import { UserRole, DatasetVisibility, ProcessingStatus } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,7 +21,9 @@ export class DatasetsService {
     createDatasetDto: CreateDatasetDto,
     file: Express.Multer.File,
     userId: string,
+    files?: Express.Multer.File[],
   ) {
+    //console.log('Creating dataset with file:', file, 'and additional files:', files?.length || 0);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { corporation: true },
@@ -37,7 +39,8 @@ export class DatasetsService {
       throw new ForbiddenException('Insufficient permissions to upload datasets');
     }
 
-    const dataset = await this.prisma.dataset.create({
+    // Choose stored metadata from primary file but keep record of all uploaded files in an adjacent folder if needed
+    let dataset = await this.prisma.dataset.create({
       data: {
         name: createDatasetDto.name,
         description: createDatasetDto.description,
@@ -52,15 +55,43 @@ export class DatasetsService {
       },
     });
 
-    // Process the file and create GeoServer layer
-    try {
-      await this.processDataset(dataset);
-    } catch (error) {
-      // If processing fails, clean up the database record
-      await this.prisma.dataset.delete({ where: { id: dataset.id } });
-      await this.fileUploadService.deleteFile(file.path);
-      throw new BadRequestException('Failed to process dataset file');
+    // If files were uploaded, move them to a dedicated folder for the dataset
+    if (files && files.length > 0) {
+      try {
+        const uploadDir = this.fileUploadService.getFilePath('');
+        const datasetDir = path.join(uploadDir, dataset.id);
+        //console.log('Organizing uploaded files into directory:', datasetDir);
+        if (!fs.existsSync(datasetDir)) fs.mkdirSync(datasetDir, { recursive: true });
+
+        // Move all files into the new directory
+        for (const f of files) {
+          const src = f.path;
+          const dest = path.join(datasetDir, f.originalname);
+          try {
+            fs.renameSync(src, dest);
+          } catch (err) {
+            // If rename fails (e.g., cross-device), fall back to copy and unlink
+            fs.copyFileSync(src, dest);
+            fs.unlinkSync(src);
+          }
+        }
+
+        // The primary file's path needs to be updated to its new location
+        const newFilePath = path.join(datasetDir, file.originalname);
+        //console.log('Updated representative file path to:', newFilePath);
+        dataset = await this.prisma.dataset.update({
+          where: { id: dataset.id },
+          data: { filePath: newFilePath },
+        });
+        //console.log('Updated dataset record:', dataset);
+      } catch (err) {
+        console.error('Failed to organize uploaded files for dataset:', err);
+        // Optional: Decide if you should clean up the created dataset record if file organization fails
+      }
     }
+
+    // Process the file and create GeoServer layer in the background
+    this.processDataset(dataset.id);
 
     return dataset;
   }
@@ -377,6 +408,37 @@ export class DatasetsService {
     return isShared;
   }
 
+  async getProcessingStatus(id: string, userId: string) {
+    const dataset = await this.prisma.dataset.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        processingStatus: true,
+        processingError: true,
+        // Add fields required for hasDatasetAccess
+        corporationId: true,
+        visibility: true,
+        sharedWith: true,
+      },
+    });
+
+    if (!dataset) {
+      throw new NotFoundException('Dataset not found');
+    }
+
+    // Check if user has access to this dataset
+    const hasAccess = await this.hasDatasetAccess(userId, dataset);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied to this dataset');
+    }
+
+    return {
+      id: dataset.id,
+      status: dataset.processingStatus,
+      error: dataset.processingError,
+    };
+  }
+
   private async hasDatasetUpdatePermission(userId: string, dataset: any): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -397,107 +459,134 @@ export class DatasetsService {
     return false;
   }
 
-  private async processDataset(dataset: any): Promise<void> {
-
-
-
-    // 1. Parse the uploaded file (GeoJSON, Shapefile, etc.)
-    // 2. Import it into PostGIS
-    // 3. Create a GeoServer workspace and layer
-    // 4. Update the dataset record with GeoServer information
-
-    const workspaceName = `corp_${dataset.corporationId}`;
-    const layerName = `dataset_${dataset.id}`;
-    const filePath = dataset.filePath;
-    const fileExt = path.extname(filePath).toLowerCase();
-
-    // 1. Parse and convert file to PostGIS-compatible format (GeoJSON or Shapefile)
-    // We'll use gdal-async for robust geospatial file handling
-    const gdal = require('gdal-async');
-    let ogrLayer;
-    try {
-      const ds = gdal.open(filePath);
-      ogrLayer = ds.layers.get(0);
-      if (!ogrLayer) throw new Error('No layer found in geospatial file');
-    } catch (err) {
-      throw new BadRequestException('Failed to parse geospatial file: ' + err.message);
-    }
-
-    // 2. Import into PostGIS
-    // We'll use pg for direct SQL, as Prisma does not support geometry columns well
-    const { Pool } = require('pg');
-    
-    // You may want to move this connection string to config/env
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+  private async processDataset(datasetId: string): Promise<void> {
+    // Update status to PROCESSING
+    let dataset = await this.prisma.dataset.update({
+      where: { id: datasetId },
+      data: { processingStatus: ProcessingStatus.PROCESSING },
     });
-    const client = await pool.connect();
-    console.log('Connected to Postgres for importing dataset');
 
     const tableName = `dataset_${dataset.id}`;
+
     try {
-      // Drop table if exists (for reprocessing)
-      await client.query(`DROP TABLE IF EXISTS "${tableName}"`);
+      // 1. Parse the uploaded file (GeoJSON, Shapefile, etc.)
+      // 2. Import it into PostGIS
+      // 3. Create a GeoServer workspace and layer
+      // 4. Update the dataset record with GeoServer information
+      console.log('Processing dataset:', dataset.id, 'from:', dataset);
+      const workspaceName = `corp_${dataset.corporationId}`;
+      const layerName = `dataset_${dataset.id}`;
+      const filePath = dataset.filePath;
+      const fileExt = path.extname(filePath).toLowerCase();
 
-      // Create table with geometry column (SRID 4326 for WGS84)
-      // We'll infer columns from the OGR layer fields
-      let fieldDefs = [];
-      ogrLayer.fields.forEach((def: any) => {
-        // Map OGR field types to Postgres types
-        let type = 'text';
-        switch (def.type) {
-          case 'Integer': type = 'integer'; break;
-          case 'Real': type = 'float'; break;
-          case 'Date': type = 'date'; break;
-        }
-        fieldDefs.push(`"${def.name}" ${type}`);
-      });
-      fieldDefs.push('geom geometry');
-      await client.query(`CREATE TABLE "${tableName}" (${fieldDefs.join(', ')})`);
-      // Insert features
-      const insertPromises = [];
-      ogrLayer.features.forEach((feature: any) => {
-        const values = ogrLayer.fields.map((def: any) => feature.fields.get(def.name));
-        // Geometry as WKT
-        const geom = feature.getGeometry();
-        if (!geom) return; // skip features with no geometry
-        const geomWkt = feature.getGeometry().toWKT();
-        const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
-        //console.log('Inserting feature with values:', values.length, 'and placeholders:', placeholders.length);
-        const sql = `INSERT INTO "${tableName}" VALUES (${placeholders}, ST_GeomFromText($${values.length + 1}, 4326))`;
-        //insertPromises.push(client.query(sql, [...values, geomWkt]));
-        insertPromises.push(
-          client.query(sql, [...values, geomWkt]).catch(err => {
-            //console.error('Insert error:', err, { sql, values, geomWkt });
-            throw err; // rethrow to propagate error to Promise.all
+      // 1. Parse and convert file to PostGIS-compatible format (GeoJSON or Shapefile)
+      // We'll use gdal-async for robust geospatial file handling
+      const gdal = require('gdal-async');
+      let ogrLayer;
+      try {
+        const ds = gdal.open(filePath);
+        ogrLayer = ds.layers.get(0);
+        if (!ogrLayer) throw new Error('No layer found in geospatial file');
+      } catch (err) {
+        throw new BadRequestException('Failed to parse geospatial file: ' + err.message);
+      }
+
+      // 2. Import into PostGIS using shared pool
+      // Use a singleton pg Pool to avoid connection churn which can cause ECONNRESET
+      const { getClient } = require('../common/db/pg.service');
+      const client = await getClient();
+      console.log('Connected to Postgres for importing dataset (shared pool)');
+
+      try {
+        // Drop table if exists (for reprocessing)
+        await client.query(`DROP TABLE IF EXISTS "${tableName}"`);
+
+        // Create table with geometry column (SRID 4326 for WGS84)
+        // We'll infer columns from the OGR layer fields
+        let fieldDefs = [];
+        ogrLayer.fields.forEach((def: any) => {
+          // Map OGR field types to Postgres types
+          let type = 'text';
+          switch (def.type) {
+            case 'Integer': type = 'integer'; break;
+            case 'Real': type = 'float'; break;
+            case 'Date': type = 'date'; break;
+          }
+          fieldDefs.push(`"${def.name}" ${type}`);
+        });
+        // use explicit geometry type with srid
+        fieldDefs.push('geom geometry(Geometry,4326)');
+        await client.query(`CREATE TABLE IF NOT EXISTS "${tableName}" (${fieldDefs.join(', ')})`);
+
+        // Insert features in batches to reduce memory/connection pressure
+        const batchSize = 500
+        const features = []
+        ogrLayer.features.forEach((feature: any) => {
+          const values = ogrLayer.fields.map((def: any) => feature.fields.get(def.name));
+          const geom = feature.getGeometry();
+          if (!geom) return; // skip features with no geometry
+          const geomWkt = geom.toWKT();
+          features.push({ values, geomWkt })
+        })
+
+        for (let i = 0; i < features.length; i += batchSize) {
+          const batch = features.slice(i, i + batchSize)
+          const queries = batch.map((f) => {
+            const placeholders = f.values.map((_: any, idx: number) => `$${idx + 1}`).join(', ')
+            const sql = `INSERT INTO "${tableName}" VALUES (${placeholders}, ST_GeomFromText($${f.values.length + 1}, 4326))`
+            return client.query(sql, [...f.values, f.geomWkt])
           })
-        );
+          await Promise.all(queries)
+        }
+        console.log(`Imported ${features.length} features into PostGIS table ${tableName}`)
+      } catch (err) {
+        throw new BadRequestException('Failed to import data into PostGIS: ' + err.message);
+      } finally {
+        try { client.release() } catch (e) { console.warn('Failed to release pg client', e) }
+      }
+
+      // 3. Register the new table as a layer in GeoServer
+      await this.geoserverService.createWorkspace(workspaceName);
+      await this.geoserverService.publishPostgisLayer({
+        workspace: workspaceName,
+        layer: layerName,
+        table: tableName,
+        srid: 4326,
       });
-      await Promise.all(insertPromises);
-      console.log(`Imported ${insertPromises.length} features into PostGIS table ${tableName}`);
-    } catch (err) {
-      await client.release();
-      throw new BadRequestException('Failed to import data into PostGIS: ' + err.message);
+
+      // 4. Update the dataset record to COMPLETED
+      await this.prisma.dataset.update({
+        where: { id: dataset.id },
+        data: {
+          workspaceName,
+          layerName,
+          isProcessed: true,
+          processingStatus: ProcessingStatus.COMPLETED,
+        },
+      });
+    } catch (error) {
+      console.error(`Failed to process dataset ${datasetId}:`, error);
+      
+      // Cleanup postgres table if it was created
+      const { Pool } = require('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const client = await pool.connect();
+      try {
+        await client.query(`DROP TABLE IF EXISTS "${tableName}"`);
+      } catch (cleanupError) {
+        console.error(`Failed to cleanup table ${tableName} for failed dataset processing:`, cleanupError);
+      } finally {
+        await client.release();
+      }
+
+      // Update status to FAILED
+      await this.prisma.dataset.update({
+        where: { id: datasetId },
+        data: {
+          processingStatus: ProcessingStatus.FAILED,
+          processingError: error.message,
+        },
+      });
     }
-    await client.release();
-
-    // 3. Register the new table as a layer in GeoServer
-    await this.geoserverService.createWorkspace(workspaceName);
-    await this.geoserverService.publishPostgisLayer({
-      workspace: workspaceName,
-      layer: layerName,
-      table: tableName,
-      srid: 4326,
-    });
-
-    // 4. Update the dataset record
-    await this.prisma.dataset.update({
-      where: { id: dataset.id },
-      data: {
-        workspaceName,
-        layerName,
-        isProcessed: true,
-      },
-    });
   }
 }

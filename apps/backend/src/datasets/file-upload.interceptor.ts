@@ -1,5 +1,5 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { FileUploadService } from './file-upload.service';
 
@@ -8,7 +8,7 @@ export class FileUploadInterceptor implements NestInterceptor {
   constructor(private readonly fileUploadService: FileUploadService) {}
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> | Promise<Observable<any>> {
     const multerConfig = this.fileUploadService.getMulterConfig();
-    const InterceptorClass = FileInterceptor('file', multerConfig);
+    const InterceptorClass = AnyFilesInterceptor(multerConfig);
     const interceptorInstance: NestInterceptor = new InterceptorClass(this.fileUploadService as any);
     return interceptorInstance.intercept(context, next);
   }

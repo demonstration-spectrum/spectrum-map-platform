@@ -40,7 +40,7 @@ export class FileUploadService {
         'application/octet-stream',
       ];
 
-      const allowedExtensions = ['.geojson', '.json', '.shp', '.zip', '.tab'];
+      const allowedExtensions = ['.geojson', '.json', '.shp', '.shx', '.dbf', '.prj', '.zip', '.tab', '.map', '.id', '.dat'];
 
       const fileExtension = path.extname(file.originalname).toLowerCase();
       const isValidMimeType = allowedMimeTypes.includes(file.mimetype);
@@ -49,7 +49,7 @@ export class FileUploadService {
       if (isValidMimeType || isValidExtension) {
         cb(null, true);
       } else {
-        cb(new BadRequestException('Invalid file type. Only GeoJSON, Shapefile, and MapInfo Tab files are allowed.'));
+        cb(new BadRequestException('Invalid file type. Only GeoJSON, Shapefile (shp/shx/dbf/prj), MapInfo Tab sets, and zip are allowed.'));
       }
     };
 
@@ -60,6 +60,57 @@ export class FileUploadService {
         fileSize: this.parseFileSize(this.configService.get('MAX_FILE_SIZE', '50MB')),
       },
     };
+  }
+
+  /**
+   * Validate required files for a given upload type.
+   * Supported types: geojson, shapefile, mapinfo
+   */
+  validateFileSet(files: Express.Multer.File[]): { type: 'geojson' | 'shapefile' | 'mapinfo'; baseName?: string } {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files uploaded');
+    }
+
+    // If single GeoJSON file
+    if (files.length === 1) {
+      const ext = path.extname(files[0].originalname).toLowerCase();
+      if (ext === '.geojson' || ext === '.json') {
+        return { type: 'geojson', baseName: path.basename(files[0].originalname, ext) };
+      }
+    }
+
+    // Group by base filename (before first dot) to support shapefile groups and mapinfo groups
+    const groups: Record<string, Express.Multer.File[]> = {};
+    for (const f of files) {
+      const name = path.basename(f.originalname);
+      const base = name.split('.').slice(0, -1).join('.');
+      if (!groups[base]) groups[base] = [];
+      groups[base].push(f);
+    }
+
+    // Check for shapefile required parts: .shp, .shx, .dbf (prj optional)
+    for (const [base, group] of Object.entries(groups)) {
+      const exts = group.map(g => path.extname(g.originalname).toLowerCase());
+      const hasShp = exts.includes('.shp');
+      const hasShx = exts.includes('.shx');
+      const hasDbf = exts.includes('.dbf');
+      if (hasShp && hasShx && hasDbf) {
+        return { type: 'shapefile', baseName: base };
+      }
+    }
+
+    // Check for MapInfo required parts: .tab, .dat, .id, .map (some datasets may not have .map but require .tab/.dat/.id)
+    for (const [base, group] of Object.entries(groups)) {
+      const exts = group.map(g => path.extname(g.originalname).toLowerCase());
+      const hasTab = exts.includes('.tab');
+      const hasDat = exts.includes('.dat');
+      const hasId = exts.includes('.id');
+      if (hasTab && hasDat && hasId) {
+        return { type: 'mapinfo', baseName: base };
+      }
+    }
+
+    throw new BadRequestException('Uploaded files do not match a supported dataset set. For shapefiles provide .shp,.shx,.dbf; for MapInfo provide .tab,.dat,.id; or upload a single GeoJSON.');
   }
 
   private parseFileSize(size: string): number {

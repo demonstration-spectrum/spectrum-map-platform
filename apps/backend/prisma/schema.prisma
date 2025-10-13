@@ -39,6 +39,13 @@ enum MapVisibility {
   PUBLIC
 }
 
+enum ProcessingStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 // Corporation model - represents tenant organizations
 model Corporation {
   id          String            @id @default(cuid())
@@ -113,12 +120,14 @@ model Dataset {
   corporationId String
   uploadedById  String
   createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  updatedAt     DateTime @updatedAt
 
   // GeoServer integration
   workspaceName String?
   layerName     String?
   isProcessed   Boolean           @default(false)
+  processingStatus ProcessingStatus @default(QUEUED)
+  processingError String?
 
   // Default styling (Mapbox Style Specification JSON)
   defaultStyle  Json?

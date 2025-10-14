@@ -25,17 +25,20 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
   // Create vector tile source
   const vectorTileUrl = `${geoserverUrl}/gwc/service/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=${layer.dataset.workspaceName}:${layer.dataset.layerName}&STYLE=&TILEMATRIXSET=WebMercatorQuad&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=application/vnd.mapbox-vector-tile`
   console.log('Vector Tile URL:', vectorTileUrl);
-  map.on('styledata', () => {
-    map.addSource(sourceId, {
-      type: 'vector',
-      tiles: [vectorTileUrl],
-      minzoom: 0,
-      maxzoom: 22
-    });
-    
+  const addSourceAndLayer = () => {
+    // Only add the vector source if it doesn't already exist.
+    if (!map.getSource(sourceId)) {
+      map.addSource(sourceId, {
+        type: 'vector',
+        tiles: [vectorTileUrl],
+        minzoom: 0,
+        maxzoom: 22
+      });
+    }
+
     // Apply layer style (normalize via createStyleFromLayer so `type` is always present)
     const style = createStyleFromLayer(layer)
-    console.log('Layer Style:', style)
+    console.log(`Layer Style (layer ${layer.id}):`, style)
     const layerType = style?.type || 'fill'
     if (!style || !style.type) {
       console.warn('Unable to determine layer type for layer', layer.id, 'falling back to fill')
@@ -80,9 +83,26 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
     if (sanitized.layout) layerDef.layout = sanitized.layout
     if (sanitized.filter) layerDef.filter = sanitized.filter
 
-    map.addLayer(layerDef)
+    // Only add the map layer if it's not already present.
+    if (!map.getLayer(layerId)) {
+      map.addLayer(layerDef)
+    }
+  }
 
-  });
+  // If the style is already loaded, add source and layer immediately.
+  // Otherwise register a one-time handler so we don't add duplicates if
+  // the style fires multiple 'styledata' events.
+  try {
+    if ((map as any).isStyleLoaded && (map as any).isStyleLoaded()) {
+      addSourceAndLayer()
+    } else {
+      map.once('styledata', addSourceAndLayer)
+    }
+  } catch (err) {
+    // Defensive fallback: if map.isStyleLoaded isn't available for some
+    // mapbox build, fall back to registering a one-time handler.
+    map.once('styledata', addSourceAndLayer)
+  }
  
 
   return { sourceId, layerId }

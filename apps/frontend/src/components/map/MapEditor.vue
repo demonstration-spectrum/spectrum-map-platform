@@ -96,6 +96,26 @@
       </div>
     </div>
 
+    <!-- Feature Info Panel -->
+    <div v-if="selectedFeature" class="fixed left-4 bottom-4 z-50 w-80 bg-white border rounded-lg shadow-lg">
+      <div class="p-3 border-b flex items-start justify-between">
+        <div>
+          <div class="text-sm font-medium">Feature</div>
+          <div class="text-xs text-gray-500">{{ selectedFeature.geometry?.type || 'Unknown' }}</div>
+        </div>
+  <button @click="clearSelection" class="text-gray-400 hover:text-gray-600 ml-2">×</button>
+      </div>
+      <div class="p-3 max-h-64 overflow-y-auto text-xs">
+        <div v-if="selectedFeature.properties && Object.keys(selectedFeature.properties).length">
+          <div v-for="(val, key) in selectedFeature.properties" :key="key" class="mb-2">
+            <div class="text-[11px] text-gray-600">{{ key }}</div>
+            <div class="text-sm text-gray-900 truncate">{{ stringifyProperty(val) }}</div>
+          </div>
+        </div>
+        <div v-else class="text-sm text-gray-500">No properties available</div>
+      </div>
+    </div>
+
     <!-- Style Editor Drawer -->
     <div v-if="currentLayer" class="fixed right-0 top-0 h-full w-96 bg-white border-l border-gray-200 z-40">
       <div class="p-4 border-b">
@@ -206,6 +226,21 @@ const layers = ref<Layer[]>([])
 const currentLayer = ref<Layer | null>(null)
 const availableDatasets = ref<Dataset[]>([])
 const mapboxMap = ref<mapboxgl.Map | null>(null)
+const selectedFeature = ref<any | null>(null)
+
+const stringifyProperty = (v: any) => {
+  if (v === null || typeof v === 'undefined') return ''
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+const clearSelection = () => {
+  selectedFeature.value = null
+  if (mapboxMap.value) {
+    const src = mapboxMap.value.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
+    if (src) src.setData({ type: 'FeatureCollection', features: [] })
+  }
+}
 
 const showAddLayerModal = ref(false)
 const selectedDatasetId = ref('')
@@ -261,6 +296,95 @@ const initializeMap = () => {
       //console.log('Adding layer to map:', layer)
       addLayerToMap(mapboxMap.value!, layer, import.meta.env.VITE_GEOSERVER_URL)
     }
+  })
+
+  // Ensure we have a geojson source + highlight layers for selected feature
+  mapboxMap.value.on('styledata', () => {
+    const m = mapboxMap.value!
+    if (!m.getSource('selected-feature')) {
+      m.addSource('selected-feature', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      })
+
+      // Fill for polygons
+      if (!m.getLayer('selected-fill')) {
+        m.addLayer({
+          id: 'selected-fill',
+          type: 'fill',
+          source: 'selected-feature',
+          paint: {
+            'fill-color': '#f59e0b',
+            'fill-opacity': 0.25
+          },
+          filter: ['==', '$type', 'Polygon']
+        })
+      }
+
+      // Outline for polygons and lines
+      if (!m.getLayer('selected-outline')) {
+        m.addLayer({
+          id: 'selected-outline',
+          type: 'line',
+          source: 'selected-feature',
+          paint: {
+            'line-color': '#b45309',
+            'line-width': 3
+          }
+        })
+      }
+
+      // Circle for points
+      if (!m.getLayer('selected-point')) {
+        m.addLayer({
+          id: 'selected-point',
+          type: 'circle',
+          source: 'selected-feature',
+          paint: {
+            'circle-color': '#f59e0b',
+            'circle-radius': 8,
+            'circle-stroke-color': '#7c2d12',
+            'circle-stroke-width': 2
+          },
+          filter: ['==', '$type', 'Point']
+        })
+      }
+    }
+  })
+
+  // Click handler: query rendered features from visible layers and show properties
+  mapboxMap.value.on('click', (e) => {
+    const m = mapboxMap.value!
+    // Build list of layer ids we manage (only those added via layers list)
+    const candidateLayerIds = layers.value.map(l => `layer-${l.id}`)
+    let features: mapboxgl.MapboxGeoJSONFeature[] = []
+    try {
+      // If there are managed layers, restrict query to them to avoid base-map features
+      features = candidateLayerIds.length ? m.queryRenderedFeatures(e.point, { layers: candidateLayerIds }) : m.queryRenderedFeatures(e.point)
+    } catch (err) {
+      console.warn('queryRenderedFeatures failed:', err)
+      features = []
+    }
+
+    if (!features || features.length === 0) {
+      selectedFeature.value = null
+      // clear highlight
+      const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
+      if (src) (src as any).setData({ type: 'FeatureCollection', features: [] })
+      return
+    }
+
+    // Use the top-most feature
+    const f = features[0]
+    const geojsonFeature = {
+      type: 'Feature',
+      geometry: f.geometry as any,
+      properties: f.properties || {}
+    }
+    selectedFeature.value = geojsonFeature
+
+  const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
+  if (src) (src as any).setData({ type: 'FeatureCollection', features: [geojsonFeature] })
   })
 }
 

@@ -391,12 +391,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useLayersStore } from '@/stores/layers'
 import { useDatasetsStore } from '@/stores/datasets'
 import { createMap, addLayerToMap, removeLayerFromMap, toggleLayerVisibility as toggleMapLayerVisibility, updateLayerStyle } from '@/utils/mapbox'
+import { useMap } from './useMap'
 import type { Map, Layer, Dataset } from '@/types'
 import mapboxgl from 'mapbox-gl'
 
@@ -410,9 +411,9 @@ const map = ref<Map | null>(null)
 const layers = ref<Layer[]>([])
 const currentLayer = ref<Layer | null>(null)
 const availableDatasets = ref<Dataset[]>([])
-const mapboxMap = ref<mapboxgl.Map | null>(null)
-const selectedFeature = ref<any | null>(null)
-const popupRef = ref<mapboxgl.Popup | null>(null)
+
+// Use the shared composable for map behavior
+const { mapboxMap, selectedFeature, popupRef, initializeMap } = useMap(mapContainer, map, layers)
 
 // Extended editor state
 const availableAttributes = ref<string[]>([])
@@ -533,182 +534,9 @@ const loadAvailableDatasets = async () => {
   }
 }
 
-const initializeMap = () => {
-  if (!mapContainer.value) return
-
-  const center = map.value?.centerLng && map.value?.centerLat 
-    ? [map.value.centerLng, map.value.centerLat] 
-    : [0, 0]
-
-  mapboxMap.value = createMap(mapContainer.value, {
-    center,
-    zoom: map.value?.zoom || 2,
-    bearing: map.value?.bearing || 0,
-    pitch: map.value?.pitch || 0
-  })
-
-  // Add layers to map
-  
-  layers.value.forEach(layer => {
-    if (layer.dataset.workspaceName && layer.dataset.layerName) {
-      //console.log('Adding layer to map:', layer)
-      addLayerToMap(mapboxMap.value!, layer, import.meta.env.VITE_GEOSERVER_URL)
-    }
-  })
-
-  // Ensure we have a geojson source + highlight layers for selected feature
-  mapboxMap.value.on('styledata', () => {
-    const m = mapboxMap.value!
-    if (!m.getSource('selected-feature')) {
-      m.addSource('selected-feature', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      })
-
-      // Fill for polygons
-      if (!m.getLayer('selected-fill')) {
-        m.addLayer({
-          id: 'selected-fill',
-          type: 'fill',
-          source: 'selected-feature',
-          paint: {
-            'fill-color': '#f59e0b',
-            'fill-opacity': 0.25
-          },
-          filter: ['==', '$type', 'Polygon']
-        })
-      }
-
-      // Outline for polygons and lines
-      if (!m.getLayer('selected-outline')) {
-        m.addLayer({
-          id: 'selected-outline',
-          type: 'line',
-          source: 'selected-feature',
-          paint: {
-            'line-color': '#b45309',
-            'line-width': 3
-          }
-        })
-      }
-
-      // Circle for points
-      if (!m.getLayer('selected-point')) {
-        m.addLayer({
-          id: 'selected-point',
-          type: 'circle',
-          source: 'selected-feature',
-          paint: {
-            'circle-color': '#f59e0b',
-            'circle-radius': 8,
-            'circle-stroke-color': '#7c2d12',
-            'circle-stroke-width': 2
-          },
-          filter: ['==', '$type', 'Point']
-        })
-      }
-    }
-  })
-
-  // Click handler: query rendered features from visible layers and show properties
-  mapboxMap.value.on('click', async (e) => {
-    const m = mapboxMap.value!
-    // Build list of layer ids we manage (only those added via layers list)
-    const candidateLayerIds = layers.value.map(l => `layer-${l.id}`)
-    let features: mapboxgl.MapboxGeoJSONFeature[] = []
-    try {
-      // If there are managed layers, restrict query to them to avoid base-map features
-      features = candidateLayerIds.length ? m.queryRenderedFeatures(e.point, { layers: candidateLayerIds }) : m.queryRenderedFeatures(e.point)
-    } catch (err) {
-      console.warn('queryRenderedFeatures failed:', err)
-      features = []
-    }
-
-    if (!features || features.length === 0) {
-      selectedFeature.value = null
-      // clear highlight and popup
-      const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
-      if (src) (src as any).setData({ type: 'FeatureCollection', features: [] })
-      if (popupRef.value) { popupRef.value.remove(); popupRef.value = null }
-      return
-    }
-
-    // Use the top-most feature
-    const f = features[0]
-    const defaultFeature = {
-      type: 'Feature',
-      geometry: f.geometry as any,
-      properties: f.properties || {}
-    }
-
-    let geojsonFeature = defaultFeature
-
-    // Resolve dataset metadata for WFS lookup using the layer id
-    const layerIdFull = (f.layer && (f.layer as any).id) || null
-    let layerObj: Layer | undefined
-    if (layerIdFull) {
-      const match = String(layerIdFull).match(/^layer-(.+)$/)
-      if (match) {
-        layerObj = layers.value.find(l => String(l.id) === String(match[1]))
-      }
-    }
-
-    if (layerObj?.dataset?.workspaceName && layerObj.dataset.layerName) {
-  const publicIdValue = (f.properties as any)?.public_id || (f.properties as any)?.publicId || (f.properties as any)?.gid
-  const wfsFeature = await fetchFeatureFromWfs(layerObj.dataset.workspaceName, layerObj.dataset.layerName, publicIdValue)
-      if (wfsFeature) {
-        geojsonFeature = wfsFeature
-      }
-    }
-
-    selectedFeature.value = geojsonFeature
-
-    const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
-    if (src) (src as any).setData({ type: 'FeatureCollection', features: [geojsonFeature] })
-
-    // Try to find layer infoBox config from the feature's layer id
-    let infoCfg: any = null
-    if (layerObj?.style?.infoBox) {
-      infoCfg = layerObj.style.infoBox
-    }
-
-    // Build popup HTML
-    const buildPopupHtml = (cfg: any, props: any) => {
-      if (cfg && cfg.template && String(cfg.template).trim()) {
-        // simple placeholder replacement
-        let html = String(cfg.template)
-        Object.keys(props || {}).forEach(k => {
-          const re = new RegExp(`{{\\s*${k}\\s*}}`, 'g')
-          html = html.replace(re, String(props[k] ?? ''))
-        })
-        return html
-      }
-
-      // default rendering
-      const title = cfg && cfg.titleField ? `<div style="font-weight:700;margin-bottom:6px">${cfg.titleField ? (props[cfg.titleField] ?? '') : ''}</div>` : ''
-      const rows = (cfg && Array.isArray(cfg.selected) && cfg.selected.length ? cfg.selected : Object.keys(props || {})).map((k: string) => {
-        const label = cfg && cfg.aliases && cfg.aliases[k] ? cfg.aliases[k] : k
-        const val = props && props[k] !== undefined ? props[k] : ''
-        return `<div style="margin-bottom:4px"><div style='font-size:11px;color:#555'>${label}</div><div style='font-size:13px;color:#111'>${String(val)}</div></div>`
-      }).join('')
-
-      return `${title}${rows}`
-    }
-
-  const popupHtml = buildPopupHtml(infoCfg, geojsonFeature.properties)
-
-    // create or update popup
-    const popupPos: mapboxgl.LngLat = e.lngLat //(f.geometry as any).coordinates || e.lngLat
-    if (popupRef.value) {
-      popupRef.value.setLngLat(popupPos).setHTML(popupHtml)
-    } else {
-      popupRef.value = new mapboxgl.Popup({ closeOnClick: true, closeButton: false })
-        .setLngLat(popupPos)
-        .setHTML(popupHtml)
-        .addTo(m)
-    }
-  })
-}
+// The composable handles initializeMap and click/highlight behavior. We still need
+// to ensure the container exists before initializing (the view uses v-if on map),
+// so call initializeMap after nextTick where appropriate.
 
 const selectLayer = (layer: Layer) => {
   // Clone to avoid mutating store object directly
@@ -1078,7 +906,16 @@ const saveMap = async () => {
 onMounted(async () => {
   await loadMap()
   await loadAvailableDatasets()
-  initializeMap()
+  // Ensure the DOM is rendered so our ref exists (MapEditor uses a static container, but be defensive)
+  await nextTick()
+  if (mapContainer.value) {
+    initializeMap(mapContainer.value, {
+      center: map.value?.centerLng && map.value?.centerLat ? [map.value.centerLng, map.value.centerLat] : [0,0],
+      zoom: map.value?.zoom || 2,
+      bearing: map.value?.bearing || 0,
+      pitch: map.value?.pitch || 0
+    })
+  }
 })
 
 onUnmounted(() => {

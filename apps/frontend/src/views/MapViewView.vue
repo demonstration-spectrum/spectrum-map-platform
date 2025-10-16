@@ -112,7 +112,8 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useLayersStore } from '@/stores/layers'
-import { createMap, addLayerToMap, removeLayerFromMap, toggleLayerVisibility as toggleMapLayerVisibility } from '@/utils/mapbox'
+import { toggleLayerVisibility as toggleMapLayerVisibility } from '@/utils/mapbox'
+import { useMap } from '@/components/map/useMap'
 import type { Map, Layer, MapVisibility } from '@/types'
 import mapboxgl from 'mapbox-gl'
 
@@ -125,7 +126,9 @@ const map = ref<Map | null>(null)
 const layers = ref<Layer[]>([])
 const showLayerPanel = ref(true)
 const isLoading = ref(false)
-const mapboxMap = ref<mapboxgl.Map | null>(null)
+
+// shared map behavior
+const { mapboxMap, selectedFeature, popupRef, initializeMap } = useMap(mapContainer, map, layers)
 
 const getVisibilityBadgeClass = (visibility: MapVisibility) => {
   switch (visibility) {
@@ -146,23 +149,22 @@ const loadMap = async () => {
     const mapId = route.params.id as string
     const password = route.query.password as string
     
-    if (password) {
-      // Handle password-protected map
-      const mapData = await mapsStore.getPasswordProtectedMap(mapId, password)
-      map.value = mapData
-    } else {
-      // Handle public map or authenticated access
-      const mapData = await mapsStore.fetchMap(mapId)
-      map.value = mapData
-    }
+    // fetchMap already accepts an optional password parameter
+    const mapData = await mapsStore.fetchMap(mapId, password)
+    map.value = mapData
     
     if (map.value) {
       layers.value = map.value.layers || []
-      // Wait for the DOM to update so the <div ref="mapContainer"> exists when we
-      // attempt to initialize Mapbox. The view uses `v-if="map"` so the container
-      // isn't guaranteed to be present immediately after setting `map.value`.
+      // Wait for the DOM to update so the <div ref="mapContainer"> exists.
       await nextTick()
-      await initializeMap()
+      if (mapContainer.value) {
+        initializeMap(mapContainer.value, {
+          center: map.value.centerLng && map.value.centerLat ? [map.value.centerLng, map.value.centerLat] : [0,0],
+          zoom: map.value.zoom || 2,
+          bearing: map.value.bearing || 0,
+          pitch: map.value.pitch || 0
+        })
+      }
     }
   } catch (error) {
     console.error('Failed to load map:', error)
@@ -171,27 +173,7 @@ const loadMap = async () => {
   }
 }
 
-const initializeMap = async () => {
-  if (!mapContainer.value || !map.value) return
-
-  const center = map.value.centerLng && map.value.centerLat 
-    ? [map.value.centerLng, map.value.centerLat] 
-    : [0, 0]
-
-  mapboxMap.value = createMap(mapContainer.value, {
-    center,
-    zoom: map.value.zoom || 2,
-    bearing: map.value.bearing || 0,
-    pitch: map.value.pitch || 0
-  })
-
-  // Add layers to map
-  layers.value.forEach(layer => {
-    if (layer.dataset.workspaceName && layer.dataset.layerName) {
-      addLayerToMap(mapboxMap.value!, layer, import.meta.env.VITE_GEOSERVER_URL)
-    }
-  })
-}
+// Map initialization is handled by the shared composable's initializeMap
 
 const toggleLayerPanel = () => {
   showLayerPanel.value = !showLayerPanel.value

@@ -91,6 +91,11 @@ router.beforeEach((to, from, next) => {
     next('/login')
   } else if (to.meta.requiresRole && authStore.user?.role !== to.meta.requiresRole) {
     next('/dashboard')
+  } else if (to.name === 'map-editor' && authStore.user?.role === 'VIEWER') {
+    // Viewer users should see the public map view, not the editor.
+    // Preserve the map id param when redirecting.
+    const id = (to.params.id as string) || ''
+    next({ name: 'map-view', params: { id } })
   } else if (to.name === 'login' && authStore.isAuthenticated) {
     next('/dashboard')
   } else {

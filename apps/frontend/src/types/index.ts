@@ -153,6 +153,7 @@ export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   CORP_ADMIN = 'CORP_ADMIN',
   EDITOR = 'EDITOR',
+  VIEWER = 'VIEWER',
   ADVISER = 'ADVISER'
 }
 

@@ -85,6 +85,21 @@ async function main() {
     },
   })
 
+  // Create a sample viewer (read-only corporate user)
+  const viewer = await prisma.user.upsert({
+    where: { email: 'viewer@acme.com' },
+    update: {},
+    create: {
+      email: 'viewer@acme.com',
+      firstName: 'View',
+      lastName: 'Only',
+      // Using string cast for VIEWER until prisma client is regenerated
+      role: 'VIEWER' as any,
+      corporationId: sampleCorp.id,
+      isActive: true,
+    },
+  })
+
   // Grant adviser access to sample corporation
   await prisma.corporationAdviser.upsert({
     where: {

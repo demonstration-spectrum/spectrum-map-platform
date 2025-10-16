@@ -9,7 +9,7 @@
             Create and manage your interactive maps
           </p>
         </div>
-        <RouterLink to="/maps/create" class="btn-primary">
+        <RouterLink v-if="!authStore.isViewer" to="/maps/create" class="btn-primary">
           Create New Map
         </RouterLink>
       </div>
@@ -43,13 +43,13 @@
         </div>
       </div>
 
-      <div v-else-if="filteredMaps.length === 0" class="text-center py-12">
+  <div v-else-if="filteredMaps.length === 0" class="text-center py-12">
         <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
         </svg>
         <h3 class="mt-2 text-sm font-medium text-gray-900">No maps</h3>
         <p class="mt-1 text-sm text-gray-500">Get started by creating a new map.</p>
-        <div class="mt-6">
+          <div class="mt-6" v-if="!authStore.isViewer">
           <RouterLink to="/maps/create" class="btn-primary">
             Create Map
           </RouterLink>
@@ -83,7 +83,7 @@
             
             <div class="mt-4 flex items-center justify-between">
               <span class="text-xs text-gray-400">by {{ map.createdBy.firstName }} {{ map.createdBy.lastName }}</span>
-              <div class="flex items-center space-x-2">
+              <div class="flex items-center space-x-2" v-if="!authStore.isViewer">
                 <button
                   @click.stop="editMap(map)"
                   class="text-gray-400 hover:text-gray-600"
@@ -111,6 +111,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useToast } from 'vue-toastification'
@@ -119,6 +120,7 @@ import type { Map, MapVisibility } from '@/types'
 
 const router = useRouter()
 const mapsStore = useMapsStore()
+const authStore = useAuthStore()
 const toast = useToast()
 
 const searchQuery = ref('')

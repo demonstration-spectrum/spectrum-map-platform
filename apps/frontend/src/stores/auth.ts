@@ -13,6 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isCorpAdmin = computed(() => user.value?.role === 'CORP_ADMIN')
   const isEditor = computed(() => user.value?.role === 'EDITOR')
   const isAdviser = computed(() => user.value?.role === 'ADVISER')
+  const isViewer = computed(() => user.value?.role === 'VIEWER')
 
   const initializeAuth = () => {
     const storedToken = localStorage.getItem('auth_token')
@@ -97,6 +98,7 @@ export const useAuthStore = defineStore('auth', () => {
     isCorpAdmin,
     isEditor,
     isAdviser,
+  isViewer,
     initializeAuth,
     login,
     register,

@@ -9,7 +9,7 @@
             Manage your geospatial data files
           </p>
         </div>
-        <RouterLink to="/datasets/upload" class="btn-primary">
+        <RouterLink v-if="!authStore.isViewer" to="/datasets/upload" class="btn-primary">
           Upload Dataset
         </RouterLink>
       </div>
@@ -49,7 +49,7 @@
         </svg>
         <h3 class="mt-2 text-sm font-medium text-gray-900">No datasets</h3>
         <p class="mt-1 text-sm text-gray-500">Get started by uploading your first dataset.</p>
-        <div class="mt-6">
+          <div class="mt-6" v-if="!authStore.isViewer">
           <RouterLink to="/datasets/upload" class="btn-primary">
             Upload Dataset
           </RouterLink>
@@ -86,9 +86,9 @@
               </div>
             </div>
             
-            <div class="mt-4 flex items-center justify-between">
+              <div class="mt-4 flex items-center justify-between">
               <span class="text-xs text-gray-400">by {{ dataset.uploadedBy.firstName }} {{ dataset.uploadedBy.lastName }}</span>
-              <div class="flex items-center space-x-2">
+              <div class="flex items-center space-x-2" v-if="!authStore.isViewer">
                 <button
                   @click="editDataset(dataset)"
                   class="text-gray-400 hover:text-gray-600"
@@ -117,6 +117,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useDatasetsStore } from '@/stores/datasets'
 import { useToast } from 'vue-toastification'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -125,6 +126,7 @@ import type { Dataset, DatasetVisibility } from '@/types'
 const router = useRouter()
 const datasetsStore = useDatasetsStore()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const searchQuery = ref('')
 const visibilityFilter = ref('')

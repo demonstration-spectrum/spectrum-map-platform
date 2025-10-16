@@ -99,6 +99,7 @@
         <h2 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <RouterLink
+            v-if="!authStore.isViewer"
             to="/maps/create"
             class="card hover:shadow-md transition-shadow cursor-pointer"
           >
@@ -114,6 +115,7 @@
           </RouterLink>
 
           <RouterLink
+            v-if="!authStore.isViewer"
             to="/datasets/upload"
             class="card hover:shadow-md transition-shadow cursor-pointer"
           >
@@ -161,7 +163,7 @@
             </svg>
             <h3 class="mt-2 text-sm font-medium text-gray-900">No maps yet</h3>
             <p class="mt-1 text-sm text-gray-500">Get started by creating your first map.</p>
-            <div class="mt-6">
+              <div class="mt-6" v-if="!authStore.isViewer">
               <RouterLink to="/maps/create" class="btn-primary">
                 Create Map
               </RouterLink>

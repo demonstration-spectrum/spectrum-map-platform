@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useLayersStore } from '@/stores/layers'
@@ -158,6 +158,10 @@ const loadMap = async () => {
     
     if (map.value) {
       layers.value = map.value.layers || []
+      // Wait for the DOM to update so the <div ref="mapContainer"> exists when we
+      // attempt to initialize Mapbox. The view uses `v-if="map"` so the container
+      // isn't guaranteed to be present immediately after setting `map.value`.
+      await nextTick()
       await initializeMap()
     }
   } catch (error) {

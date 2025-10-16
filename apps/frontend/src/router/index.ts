@@ -91,12 +91,23 @@ router.beforeEach((to, from, next) => {
     next('/login')
   } else if (to.meta.requiresRole && authStore.user?.role !== to.meta.requiresRole) {
     next('/dashboard')
-  } else if (to.name === 'map-editor' && authStore.user?.role === 'VIEWER') {
-    // Viewer users should see the public map view, not the editor.
-    // Preserve the map id param when redirecting.
-    const id = (to.params.id as string) || ''
-    next({ name: 'map-view', params: { id } })
-  } else if (to.name === 'login' && authStore.isAuthenticated) {
+  } else if (authStore.user?.role === 'VIEWER') {
+    // Block viewer users from accessing editor/management routes.
+    const viewerBlockedRoutes = ['datasets', 'upload-dataset', 'create-map']
+    if (to.name === 'map-editor') {
+      // Viewer users should see the public map view, not the editor. Preserve id param.
+      const id = (to.params.id as string) || ''
+      next({ name: 'map-view', params: { id } })
+      return
+    }
+
+    if (viewerBlockedRoutes.includes(String(to.name))) {
+      next('/dashboard')
+      return
+    }
+  }
+
+  if (to.name === 'login' && authStore.isAuthenticated) {
     next('/dashboard')
   } else {
     next()

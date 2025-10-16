@@ -503,8 +503,51 @@ export class DatasetsService {
 
         // Create table with geometry column (SRID 4326 for WGS84)
         // We'll infer columns from the OGR layer fields
-        let fieldDefs = [];
-        ogrLayer.fields.forEach((def: any) => {
+        // GDAL's layer.fields is a collection-like object; convert to a real array for JS convenience
+        const fieldsArray: any[] = []
+        try {
+          if (ogrLayer.fields && typeof ogrLayer.fields.forEach === 'function') {
+            ogrLayer.fields.forEach((f: any) => fieldsArray.push(f))
+          } else if (Array.isArray(ogrLayer.fields)) {
+            ogrLayer.fields.forEach((f: any) => fieldsArray.push(f))
+          }
+        } catch (e) {
+          // fallback: attempt to iterate by index/count if available
+          try {
+            const count = (ogrLayer.fields && ogrLayer.fields.count) || 0
+            for (let idx = 0; idx < count; idx++) {
+              const f = ogrLayer.fields.get(idx)
+              if (f) fieldsArray.push(f)
+            }
+          } catch (err) {
+            // if we cannot enumerate fields, continue with empty array
+            console.warn('Unable to enumerate OGR layer fields, proceeding with no attribute columns', err)
+          }
+        }
+
+        const hasGidField = fieldsArray.some((def: any) => String(def.name).toLowerCase() === 'gid')
+        const hasPublicIdField = fieldsArray.some((def: any) => String(def.name).toLowerCase() === 'public_id')
+
+        const fieldDefs: string[] = [];
+        // Ensure pgcrypto extension for gen_random_uuid() is available (no-op if already present)
+        try {
+          await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+        } catch (e) {
+          // non-fatal: extension creation may require superuser; log and continue
+          console.warn('Could not create pgcrypto extension; ensure gen_random_uuid() is available:', e.message || e)
+        }
+
+        // If the source doesn't include a gid, add an auto-incrementing primary key
+        if (!hasGidField) {
+          fieldDefs.push('"gid" bigserial primary key')
+        }
+
+        // Add a public-safe UUID identifier for external APIs unless the source already provides one
+        if (!hasPublicIdField) {
+          fieldDefs.push('"public_id" uuid DEFAULT gen_random_uuid() NOT NULL')
+        }
+
+        fieldsArray.forEach((def: any) => {
           // Map OGR field types to Postgres types
           let type = 'text';
           switch (def.type) {
@@ -512,28 +555,48 @@ export class DatasetsService {
             case 'Real': type = 'float'; break;
             case 'Date': type = 'date'; break;
           }
+          // quote field names to be safe
           fieldDefs.push(`"${def.name}" ${type}`);
         });
+
         // use explicit geometry type with srid
         fieldDefs.push('geom geometry(Geometry,4326)');
+        console.log('Creating PostGIS table with fields:', fieldDefs);
         await client.query(`CREATE TABLE IF NOT EXISTS "${tableName}" (${fieldDefs.join(', ')})`);
+
+        // Ensure there's an index on public_id for fast lookups
+        try {
+          await client.query(`CREATE INDEX IF NOT EXISTS "${tableName}_public_id_idx" ON "${tableName}" (public_id)`);
+        } catch (e) {
+          console.warn('Failed to create index on public_id for table', tableName, e.message || e)
+        }
 
         // Insert features in batches to reduce memory/connection pressure
         const batchSize = 500
         const features = []
         ogrLayer.features.forEach((feature: any) => {
-          const values = ogrLayer.fields.map((def: any) => feature.fields.get(def.name));
+          const values = fieldsArray.map((def: any) => feature.fields.get(def.name));
           const geom = feature.getGeometry();
           if (!geom) return; // skip features with no geometry
           const geomWkt = geom.toWKT();
           features.push({ values, geomWkt })
         })
 
+        // Build non-geom column list (these are the OGR fields only)
+        const nonGeomCols = fieldsArray.map((def: any) => `"${def.name}"`)
+
         for (let i = 0; i < features.length; i += batchSize) {
           const batch = features.slice(i, i + batchSize)
           const queries = batch.map((f) => {
+            // If there are no attribute columns, only insert geometry
+            if (!f.values || f.values.length === 0) {
+              const sql = `INSERT INTO "${tableName}" (geom) VALUES (ST_GeomFromText($1, 4326))`
+              return client.query(sql, [f.geomWkt])
+            }
+
             const placeholders = f.values.map((_: any, idx: number) => `$${idx + 1}`).join(', ')
-            const sql = `INSERT INTO "${tableName}" VALUES (${placeholders}, ST_GeomFromText($${f.values.length + 1}, 4326))`
+            const cols = `${nonGeomCols.join(', ')}, geom`
+            const sql = `INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders}, ST_GeomFromText($${f.values.length + 1}, 4326))`
             return client.query(sql, [...f.values, f.geomWkt])
           })
           await Promise.all(queries)

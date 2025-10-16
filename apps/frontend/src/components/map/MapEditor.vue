@@ -123,28 +123,213 @@
         <p class="text-sm text-gray-500">Dataset: {{ currentLayer.dataset?.name }}</p>
       </div>
       <div class="p-4 overflow-y-auto h-[calc(100%-64px)]">
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Fill color</label>
-            <input type="color" v-model="currentLayer.style._simple.fillColor" class="w-16 h-8 p-0" />
-          </div>
+        <div class="space-y-6">
+          <!-- Paint Properties -->
+          <section>
+            <h4 class="text-sm font-semibold mb-2">Paint Properties</h4>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                <input type="color" v-model="currentLayer.style._simple.fillColor" class="w-16 h-8 p-0" />
+                <input v-model="currentLayer.style._simple.fillColor" class="input mt-2" />
+              </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Outline color</label>
-            <input type="color" v-model="currentLayer.style._simple.outlineColor" class="w-16 h-8 p-0" />
-          </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Opacity</label>
+                <input type="range" min="0" max="1" step="0.01" v-model.number="currentLayer.style._simple.fillOpacity" />
+                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.fillOpacity }}</div>
+              </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Fill opacity</label>
-            <input type="range" min="0" max="1" step="0.01" v-model.number="currentLayer.style._simple.fillOpacity" />
-            <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.fillOpacity }}</div>
-          </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Line Width / Radius</label>
+                <input type="range" min="0" max="50" step="0.5" v-model.number="currentLayer.style._simple.lineWidth" />
+                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.lineWidth }}</div>
+              </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Line width</label>
-            <input type="range" min="0" max="10" step="0.5" v-model.number="currentLayer.style._simple.lineWidth" />
-            <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.lineWidth }}</div>
-          </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Translation / Offset (X, Y)</label>
+                <div class="flex space-x-2">
+                  <input type="number" step="1" v-model.number="currentLayer.style._simple.translateX" class="input" placeholder="X" />
+                  <input type="number" step="1" v-model.number="currentLayer.style._simple.translateY" class="input" placeholder="Y" />
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pattern / Stroke</label>
+                <input v-model="currentLayer.style._simple.dashArray" class="input" placeholder="e.g. 2,4" />
+              </div>
+            </div>
+          </section>
+
+          <!-- Layout Properties -->
+          <section>
+            <h4 class="text-sm font-semibold mb-2">Layout Properties</h4>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700">Visibility</label>
+                  <div class="text-xs text-gray-500">Toggle master visibility for this layer</div>
+                </div>
+                <input type="checkbox" v-model="currentLayer.isVisible" @change="onVisibilityToggle" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Text field (label)</label>
+                <select v-model="currentLayer.style._simple.textField" class="input">
+                  <option value="">-- none --</option>
+                  <option v-for="attr in availableAttributes" :key="attr" :value="attr">{{ attr }}</option>
+                </select>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Text size</label>
+                  <input type="number" v-model.number="currentLayer.style._simple.textSize" class="input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Icon image</label>
+                  <input v-model="currentLayer.style._simple.iconImage" class="input" placeholder="icon name" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Data-driven Styling -->
+          <section>
+            <h4 class="text-sm font-semibold mb-2">Data-driven Styling</h4>
+            <div class="space-y-2">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bind property</label>
+                <select v-model="dataDriven.property" class="input">
+                  <option value="">-- select property --</option>
+                  <option v-for="attr in availableAttributes" :key="attr" :value="attr">{{ attr }}</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Styling type</label>
+                <select v-model="dataDriven.type" class="input">
+                  <option value="categorical">Categorical</option>
+                  <option value="interval">Interval (Steps)</option>
+                  <option value="continuous">Continuous (Interpolate)</option>
+                </select>
+              </div>
+
+              <div v-if="dataDriven.type === 'categorical'">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Categories (value → color)</label>
+                <div v-for="(cat, idx) in dataDriven.categorical" :key="idx" class="flex items-center space-x-2 mb-2">
+                  <input v-model="cat.value" class="input" placeholder="value" />
+                  <input type="color" v-model="cat.color" />
+                  <button class="btn-secondary" @click.prevent="dataDriven.categorical.splice(idx,1)">Remove</button>
+                </div>
+                <div class="flex space-x-2">
+                  <button class="btn-secondary" @click.prevent="dataDriven.categorical.push({ value: '', color: '#ff0000' })">Add</button>
+                </div>
+              </div>
+
+              <div v-if="dataDriven.type === 'interval' || dataDriven.type === 'continuous'">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Stops (input → output)</label>
+                <div v-for="(stop, idx) in dataDriven.stops" :key="idx" class="flex items-center space-x-2 mb-2">
+                  <input type="number" v-model.number="stop.input" class="input" placeholder="input" />
+                  <input v-model="stop.output" class="input" placeholder="output (e.g., #color or size)" />
+                  <button class="btn-secondary" @click.prevent="dataDriven.stops.splice(idx,1)">Remove</button>
+                </div>
+                <div class="flex space-x-2">
+                  <button class="btn-secondary" @click.prevent="dataDriven.stops.push({ input: 0, output: '#ff0000' })">Add Stop</button>
+                </div>
+                <div class="mt-2">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Interpolation</label>
+                  <select v-model="dataDriven.interpolation" class="input">
+                    <option value="linear">Linear</option>
+                    <option value="exponential">Exponential</option>
+                    <option value="cubic-bezier">Cubic-bezier</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Feature Info Box Formatter -->
+          <section>
+            <h4 class="text-sm font-semibold mb-2">Feature Info Box</h4>
+            <div class="space-y-2">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Attributes to include</label>
+                <div class="space-y-2">
+                  <div class="max-h-32 overflow-y-auto border p-2 rounded">
+                    <div v-for="attr in availableAttributes" :key="attr" class="flex items-center justify-between mb-1">
+                      <div class="flex items-center space-x-2">
+                        <input type="checkbox" :value="attr" v-model="infoBox.selected" />
+                        <div class="text-sm">{{ attr }}</div>
+                      </div>
+                      <input v-if="infoBox.selected.includes(attr)" v-model="infoBox.aliases[attr]" class="input w-32" placeholder="Alias" />
+                    </div>
+                  </div>
+
+                  <div v-if="infoBox.selected.length" class="mt-2">
+                    <div class="text-xs text-gray-500 mb-1">Selected fields (order matters):</div>
+                    <div class="space-y-1 max-h-40 overflow-y-auto border p-2 rounded">
+                      <div v-for="(f, idx) in infoBox.selected" :key="f" class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                          <div class="text-sm">{{ f }}</div>
+                          <input v-model="infoBox.aliases[f]" class="input w-36" placeholder="Alias" />
+                        </div>
+                        <div class="flex items-center space-x-1">
+                          <button class="p-1 text-xs" @click.prevent="moveInfoFieldUp(idx)" :disabled="idx===0">↑</button>
+                          <button class="p-1 text-xs" @click.prevent="moveInfoFieldDown(idx)" :disabled="idx===infoBox.selected.length-1">↓</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Title field</label>
+                <select v-model="infoBox.titleField" class="input">
+                  <option value="">-- none --</option>
+                  <option v-for="attr in availableAttributes" :key="attr" :value="attr">{{ attr }}</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Template Editor (advanced)</label>
+                <textarea v-model="infoBox.template" class="input h-28" placeholder="Use {{attribute}} placeholders"></textarea>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Background</label>
+                  <input type="color" v-model="infoBox.background" class="w-16 h-8 p-0" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Typography size</label>
+                  <input type="number" v-model.number="infoBox.fontSize" class="input" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Advanced: Filter & JSON -->
+          <section>
+            <h4 class="text-sm font-semibold mb-2">Advanced</h4>
+            <div class="space-y-2">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Filter (simple)</label>
+                <input v-model="filterEditor.simple" class="input" placeholder='e.g. ["==","class","motorway"]' />
+                <div class="text-xs text-gray-500 mt-1">This will be parsed as JSON when applying.</div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Raw JSON</label>
+                <div class="flex items-center space-x-2 mb-2">
+                  <label class="flex items-center"><input type="checkbox" v-model="useRawJson" class="mr-2" /> Edit raw JSON</label>
+                </div>
+                <textarea v-if="useRawJson" v-model="rawJson" class="input h-48 font-mono"></textarea>
+                <div v-else class="text-xs text-gray-500">Toggle raw JSON to edit full style object directly.</div>
+              </div>
+            </div>
+          </section>
 
           <div class="flex justify-end space-x-2">
             <button @click="closeStyleEditor" class="btn-secondary">Close</button>
@@ -227,6 +412,79 @@ const currentLayer = ref<Layer | null>(null)
 const availableDatasets = ref<Dataset[]>([])
 const mapboxMap = ref<mapboxgl.Map | null>(null)
 const selectedFeature = ref<any | null>(null)
+const popupRef = ref<mapboxgl.Popup | null>(null)
+
+// Extended editor state
+const availableAttributes = ref<string[]>([])
+
+const dataDriven = ref<any>({
+  property: '',
+  type: 'categorical',
+  categorical: [] as Array<{ value: string; color: string }>,
+  stops: [] as Array<{ input: number; output: any }> ,
+  interpolation: 'linear'
+})
+
+const infoBox = ref<any>({
+  selected: [] as string[],
+  aliases: {} as Record<string,string>,
+  titleField: '',
+  template: '',
+  background: '#ffffff',
+  fontSize: 14
+})
+
+const filterEditor = ref<any>({ simple: '' })
+const useRawJson = ref(false)
+const rawJson = ref('')
+const geoserverBaseUrl = (import.meta.env.VITE_GEOSERVER_URL || '').replace(/\/$/, '')
+
+const buildPublicIdFilter = (value: unknown) => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const sanitized = raw.replace(/'/g, "''")
+  return `public_id='${sanitized}'`
+}
+
+const fetchFeatureFromWfs = async (workspace: string, layerName: string, publicIdValue: unknown) => {
+  if (!geoserverBaseUrl || publicIdValue === null || typeof publicIdValue === 'undefined') return null
+  const filter = buildPublicIdFilter(publicIdValue)
+  if (!filter) return null
+  console.log('Fetching feature from WFS:', workspace, layerName, publicIdValue)
+  const params = new URLSearchParams({
+    service: 'WFS',
+    version: '1.1.0',
+    request: 'GetFeature',
+    typeName: `${workspace}:${layerName}`,
+    outputFormat: 'application/json',
+    srsName: 'EPSG:4326',
+    CQL_FILTER: filter
+  })
+
+  const url = `${geoserverBaseUrl}/wfs?${params.toString()}`
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.warn('Failed WFS request:', response.status, response.statusText)
+      return null
+    }
+
+    const data = await response.json()
+    const feature = Array.isArray(data?.features) && data.features.length ? data.features[0] : null
+    if (feature && feature.geometry) {
+      return {
+        type: 'Feature',
+        geometry: feature.geometry,
+        properties: feature.properties || {}
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching WFS feature:', err)
+  }
+
+  return null
+}
 
 const stringifyProperty = (v: any) => {
   if (v === null || typeof v === 'undefined') return ''
@@ -353,7 +611,7 @@ const initializeMap = () => {
   })
 
   // Click handler: query rendered features from visible layers and show properties
-  mapboxMap.value.on('click', (e) => {
+  mapboxMap.value.on('click', async (e) => {
     const m = mapboxMap.value!
     // Build list of layer ids we manage (only those added via layers list)
     const candidateLayerIds = layers.value.map(l => `layer-${l.id}`)
@@ -368,23 +626,87 @@ const initializeMap = () => {
 
     if (!features || features.length === 0) {
       selectedFeature.value = null
-      // clear highlight
+      // clear highlight and popup
       const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
       if (src) (src as any).setData({ type: 'FeatureCollection', features: [] })
+      if (popupRef.value) { popupRef.value.remove(); popupRef.value = null }
       return
     }
 
     // Use the top-most feature
     const f = features[0]
-    const geojsonFeature = {
+    const defaultFeature = {
       type: 'Feature',
       geometry: f.geometry as any,
       properties: f.properties || {}
     }
+
+    let geojsonFeature = defaultFeature
+
+    // Resolve dataset metadata for WFS lookup using the layer id
+    const layerIdFull = (f.layer && (f.layer as any).id) || null
+    let layerObj: Layer | undefined
+    if (layerIdFull) {
+      const match = String(layerIdFull).match(/^layer-(.+)$/)
+      if (match) {
+        layerObj = layers.value.find(l => String(l.id) === String(match[1]))
+      }
+    }
+
+    if (layerObj?.dataset?.workspaceName && layerObj.dataset.layerName) {
+  const publicIdValue = (f.properties as any)?.public_id || (f.properties as any)?.publicId || (f.properties as any)?.gid
+  const wfsFeature = await fetchFeatureFromWfs(layerObj.dataset.workspaceName, layerObj.dataset.layerName, publicIdValue)
+      if (wfsFeature) {
+        geojsonFeature = wfsFeature
+      }
+    }
+
     selectedFeature.value = geojsonFeature
 
-  const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
-  if (src) (src as any).setData({ type: 'FeatureCollection', features: [geojsonFeature] })
+    const src = m.getSource('selected-feature') as mapboxgl.GeoJSONSource | undefined
+    if (src) (src as any).setData({ type: 'FeatureCollection', features: [geojsonFeature] })
+
+    // Try to find layer infoBox config from the feature's layer id
+    let infoCfg: any = null
+    if (layerObj?.style?.infoBox) {
+      infoCfg = layerObj.style.infoBox
+    }
+
+    // Build popup HTML
+    const buildPopupHtml = (cfg: any, props: any) => {
+      if (cfg && cfg.template && String(cfg.template).trim()) {
+        // simple placeholder replacement
+        let html = String(cfg.template)
+        Object.keys(props || {}).forEach(k => {
+          const re = new RegExp(`{{\\s*${k}\\s*}}`, 'g')
+          html = html.replace(re, String(props[k] ?? ''))
+        })
+        return html
+      }
+
+      // default rendering
+      const title = cfg && cfg.titleField ? `<div style="font-weight:700;margin-bottom:6px">${cfg.titleField ? (props[cfg.titleField] ?? '') : ''}</div>` : ''
+      const rows = (cfg && Array.isArray(cfg.selected) && cfg.selected.length ? cfg.selected : Object.keys(props || {})).map((k: string) => {
+        const label = cfg && cfg.aliases && cfg.aliases[k] ? cfg.aliases[k] : k
+        const val = props && props[k] !== undefined ? props[k] : ''
+        return `<div style="margin-bottom:4px"><div style='font-size:11px;color:#555'>${label}</div><div style='font-size:13px;color:#111'>${String(val)}</div></div>`
+      }).join('')
+
+      return `${title}${rows}`
+    }
+
+  const popupHtml = buildPopupHtml(infoCfg, geojsonFeature.properties)
+
+    // create or update popup
+    const popupPos: mapboxgl.LngLat = e.lngLat //(f.geometry as any).coordinates || e.lngLat
+    if (popupRef.value) {
+      popupRef.value.setLngLat(popupPos).setHTML(popupHtml)
+    } else {
+      popupRef.value = new mapboxgl.Popup({ closeOnClick: true, closeButton: false })
+        .setLngLat(popupPos)
+        .setHTML(popupHtml)
+        .addTo(m)
+    }
   })
 }
 
@@ -398,7 +720,127 @@ const selectLayer = (layer: Layer) => {
     fillOpacity: cloned.style?.paint?.['fill-opacity'] ?? (cloned.dataset.defaultStyle?.paint?.['fill-opacity'] ?? 0.6),
     outlineColor: cloned.style?.paint?.['fill-outline-color'] || (cloned.dataset.defaultStyle?.paint?.['fill-outline-color'] || '#1e40af'),
     lineWidth: cloned.style?.paint?.['line-width'] ?? (cloned.dataset.defaultStyle?.paint?.['line-width'] ?? 1),
+    translateX: cloned.style?.paint?.['fill-translate'] ? cloned.style.paint['fill-translate'][0] : 0,
+    translateY: cloned.style?.paint?.['fill-translate'] ? cloned.style.paint['fill-translate'][1] : 0,
+    dashArray: (cloned.style?.paint?.['line-dasharray'] || []).join(',') || '',
+    circleRadius: cloned.style?.paint?.['circle-radius'] ?? cloned.dataset.defaultStyle?.paint?.['circle-radius'] ?? 6,
+    circleColor: cloned.style?.paint?.['circle-color'] ?? cloned.dataset.defaultStyle?.paint?.['circle-color'] ?? '#3b82f6',
+    textField: cloned.style?.layout?.['text-field'] || '',
+    textSize: cloned.style?.layout?.['text-size'] ?? 12,
+    iconImage: cloned.style?.layout?.['icon-image'] || ''
   }
+
+  // Determine available attributes: try dataset.fields or leave empty
+  availableAttributes.value = []
+  try {
+    if (cloned.dataset && (cloned.dataset as any).fields) {
+      availableAttributes.value = (cloned.dataset as any).fields.map((f: any) => f.name)
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Fill raw JSON editor and set defaults for info box/filter editors
+  rawJson.value = JSON.stringify(cloned.style || {}, null, 2)
+
+  // Initialize infoBox editor from saved style if present
+  if (cloned.style && cloned.style.infoBox) {
+    infoBox.value = {
+      selected: Array.isArray(cloned.style.infoBox.selected) ? cloned.style.infoBox.selected : [],
+      aliases: cloned.style.infoBox.aliases || {},
+      titleField: cloned.style.infoBox.titleField || '',
+      template: cloned.style.infoBox.template || '',
+      background: cloned.style.infoBox.background || '#ffffff',
+      fontSize: cloned.style.infoBox.fontSize || 14
+    }
+  } else {
+    infoBox.value = { selected: [], aliases: {}, titleField: '', template: '', background: '#ffffff', fontSize: 14 }
+  }
+
+  filterEditor.value = { simple: '' }
+  if (cloned.style && cloned.style.filter) {
+    try {
+      filterEditor.value.simple = JSON.stringify(cloned.style.filter)
+    } catch (e) {
+      filterEditor.value.simple = String(cloned.style.filter)
+    }
+  }
+
+  // Pre-fill dataDriven from style expressions if possible (basic: only handles 'match' and 'interpolate' for fill-color)
+  dataDriven.value = { property: '', type: 'categorical', categorical: [], stops: [], interpolation: 'linear' }
+  try {
+    const p = cloned.style?.paint?.['fill-color']
+    if (Array.isArray(p) && p[0] === 'match' && Array.isArray(p[1]) && p[1][0] === 'get') {
+      dataDriven.value.property = p[1][1]
+      dataDriven.value.type = 'categorical'
+      // match: ['match', ['get', prop], v1, o1, v2, o2, default]
+      const pairs = p.slice(2, p.length-1)
+      for (let i = 0; i < pairs.length; i += 2) {
+        dataDriven.value.categorical.push({ value: pairs[i], color: pairs[i+1] })
+      }
+    } else if (Array.isArray(p) && p[0] === 'interpolate') {
+      dataDriven.value.type = 'continuous'
+      // p = ['interpolate', ['linear'], ['to-number', ['get', prop]], in1, out1, in2, out2 ...]
+      const toNumberIdx = p.findIndex((x: any) => Array.isArray(x) && x[0] === 'to-number')
+      if (toNumberIdx > -1 && Array.isArray(p[toNumberIdx][1]) && p[toNumberIdx][1][0] === 'get') {
+        dataDriven.value.property = p[toNumberIdx][1][1]
+        // stops start after that
+        const stopStart = toNumberIdx + 1
+        for (let i = stopStart; i < p.length; i += 2) {
+          dataDriven.value.stops.push({ input: Number(p[i]), output: p[i+1] })
+        }
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors
+  }
+
+  // If dataset.fields wasn't available, try to infer attribute names from the map source
+  if (availableAttributes.value.length === 0 && mapboxMap.value) {
+    try {
+      const srcId = `source-${cloned.id}`
+      let features: any[] = []
+
+      // Try querying source tiles for features first
+      try {
+        if (mapboxMap.value.getSource(srcId)) {
+          // querySourceFeatures may throw if tiles not loaded; wrap in try/catch
+          // use sourceLayer if available
+          const params: any = {}
+          if (cloned.dataset && cloned.dataset.layerName) params.sourceLayer = cloned.dataset.layerName
+          // limit is not a standard param for querySourceFeatures but some builds accept it; we'll handle defensively
+          features = (mapboxMap.value.querySourceFeatures(srcId, params) as any) || []
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // If no features from source, fall back to querying rendered features for our layer id
+      if (!features || features.length === 0) {
+        try {
+          const layerId = `layer-${cloned.id}`
+          // queryRenderedFeatures expects (geometry?, options?). Pass undefined for geometry and options with layers.
+          features = mapboxMap.value.queryRenderedFeatures(undefined, { layers: [layerId] }) || []
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      const attrs = new Set<string>()
+      features.forEach(f => {
+        if (f && f.properties) {
+          Object.keys(f.properties).forEach((k: string) => attrs.add(k))
+        }
+      })
+
+      if (attrs.size) {
+        availableAttributes.value = Array.from(attrs)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   currentLayer.value = cloned
 }
 
@@ -412,15 +854,85 @@ const applyStyleChanges = async () => {
   const paint: any = { ...(style.paint || {}) }
   const layout: any = { ...(style.layout || {}) }
 
-  // If editing polygon/circle/line styles, map our simpler fields to paint properties
-  if (style._simple) {
-    const s = style._simple
-    if (s.fillColor) paint['fill-color'] = s.fillColor
-    if (typeof s.fillOpacity !== 'undefined') paint['fill-opacity'] = Number(s.fillOpacity)
-    if (s.outlineColor) paint['fill-outline-color'] = s.outlineColor
-    if (typeof s.lineWidth !== 'undefined') paint['line-width'] = Number(s.lineWidth)
-    if (s.circleColor) paint['circle-color'] = s.circleColor
-    if (typeof s.circleRadius !== 'undefined') paint['circle-radius'] = Number(s.circleRadius)
+  // If using raw JSON, try to parse and use it directly
+  if (useRawJson.value && rawJson.value) {
+    try {
+      const parsed = JSON.parse(rawJson.value)
+      // prefer raw parsed object as new style
+      style.paint = parsed.paint || parsed.paint === null ? parsed.paint : paint
+      style.layout = parsed.layout || parsed.layout === null ? parsed.layout : layout
+      style.filter = parsed.filter || style.filter
+    } catch (e) {
+      console.error('Invalid JSON in raw editor:', e)
+    }
+  } else {
+    // If editing polygon/circle/line styles, map our simpler fields to paint properties
+    if (style._simple) {
+      const s = style._simple
+      if (s.fillColor) paint['fill-color'] = s.fillColor
+      if (typeof s.fillOpacity !== 'undefined') paint['fill-opacity'] = Number(s.fillOpacity)
+      if (s.outlineColor) paint['fill-outline-color'] = s.outlineColor
+      if (typeof s.lineWidth !== 'undefined') paint['line-width'] = Number(s.lineWidth)
+      if (s.circleColor) paint['circle-color'] = s.circleColor
+      if (typeof s.circleRadius !== 'undefined') paint['circle-radius'] = Number(s.circleRadius)
+
+      // translate
+      if (typeof s.translateX !== 'undefined' || typeof s.translateY !== 'undefined') {
+        paint['fill-translate'] = [Number(s.translateX) || 0, Number(s.translateY) || 0]
+        paint['line-translate'] = [Number(s.translateX) || 0, Number(s.translateY) || 0]
+      }
+
+      // dash array
+      if (s.dashArray) {
+        const parts = String(s.dashArray).split(',').map((p: string) => Number(p.trim())).filter((n: any) => !Number.isNaN(n))
+        if (parts.length) paint['line-dasharray'] = parts
+      }
+
+      // layout fields
+      if (s.textField) layout['text-field'] = ['get', s.textField]
+      if (typeof s.textSize !== 'undefined') layout['text-size'] = Number(s.textSize)
+      if (s.iconImage) layout['icon-image'] = s.iconImage
+    }
+
+    // Data-driven: simple handling for color or size
+    if (dataDriven.value.property) {
+      const prop = dataDriven.value.property
+      if (dataDriven.value.type === 'categorical') {
+        // build match expression mapbox-style: ['match', ['get', prop], v1, o1, v2, o2, default]
+        const expr: any[] = ['match', ['get', prop]]
+        dataDriven.value.categorical.forEach((c: any) => {
+          expr.push(c.value)
+          expr.push(c.color)
+        })
+        expr.push(paint['fill-color'] || '#888')
+        paint['fill-color'] = expr
+      } else if (dataDriven.value.type === 'interval') {
+        // steps - use step expression
+        const expr: any[] = ['step', ['to-number', ['get', prop]], dataDriven.value.stops.length ? dataDriven.value.stops[0].output : paint['fill-color'] || '#888']
+        dataDriven.value.stops.forEach((s: any) => {
+          expr.push(Number(s.input))
+          expr.push(s.output)
+        })
+        paint['fill-color'] = expr
+      } else if (dataDriven.value.type === 'continuous') {
+        // interpolate
+        const interp: any[] = ['interpolate', ['linear'], ['to-number', ['get', prop]]]
+        dataDriven.value.stops.forEach((s: any) => {
+          interp.push(Number(s.input))
+          interp.push(s.output)
+        })
+        paint['fill-color'] = interp
+      }
+    }
+
+    // Filter editor: try to parse simple JSON
+    if (filterEditor.value.simple) {
+      try {
+        style.filter = JSON.parse(filterEditor.value.simple)
+      } catch (e) {
+        console.warn('Invalid filter JSON, ignoring')
+      }
+    }
   }
 
   const newStyle = {
@@ -431,7 +943,17 @@ const applyStyleChanges = async () => {
 
   try {
     // Persist to backend/store
-    const updatedLayer = await layersStore.updateLayer(currentLayer.value.mapId, currentLayer.value.id, { style: newStyle })
+    // attach infoBox configuration
+    newStyle.infoBox = {
+      selected: infoBox.value.selected || [],
+      aliases: infoBox.value.aliases || {},
+      titleField: infoBox.value.titleField || '',
+      template: infoBox.value.template || '',
+      background: infoBox.value.background || '#ffffff',
+      fontSize: infoBox.value.fontSize || 14
+    }
+
+    const updatedLayer = await layersStore.updateLayer(currentLayer.value.mapId, currentLayer.value.id, { style: newStyle, isVisible: currentLayer.value.isVisible })
 
     // Update local currentLayer to reflect persisted data
     currentLayer.value = JSON.parse(JSON.stringify(updatedLayer))
@@ -441,14 +963,44 @@ const applyStyleChanges = async () => {
       const layerId = `layer-${currentLayer.value.id}`
       // use helper to update paint/layout
       updateLayerStyle(mapboxMap.value, layerId, { id: layerId, type: newStyle.type || 'fill', paint: newStyle.paint, layout: newStyle.layout })
+      // update visibility
+      toggleMapLayerVisibility(mapboxMap.value, layerId, currentLayer.value.isVisible)
     }
   } catch (err) {
     console.error('Failed to apply style changes:', err)
   }
 }
 
+const onVisibilityToggle = async () => {
+  if (!currentLayer.value) return
+  try {
+    await layersStore.updateLayer(currentLayer.value.mapId, currentLayer.value.id, { isVisible: currentLayer.value.isVisible })
+    if (mapboxMap.value) {
+      toggleMapLayerVisibility(mapboxMap.value, `layer-${currentLayer.value.id}`, currentLayer.value.isVisible)
+    }
+  } catch (e) {
+    console.error('Failed to toggle visibility:', e)
+  }
+}
+
 const closeStyleEditor = () => {
   currentLayer.value = null
+}
+
+const moveInfoFieldUp = (idx: number) => {
+  if (!infoBox.value || idx <= 0) return
+  const arr = infoBox.value.selected
+  const tmp = arr[idx - 1]
+  arr[idx - 1] = arr[idx]
+  arr[idx] = tmp
+}
+
+const moveInfoFieldDown = (idx: number) => {
+  if (!infoBox.value || idx < 0 || idx >= infoBox.value.selected.length - 1) return
+  const arr = infoBox.value.selected
+  const tmp = arr[idx + 1]
+  arr[idx + 1] = arr[idx]
+  arr[idx] = tmp
 }
 
 const toggleLayerVisibility = async (layer: Layer) => {

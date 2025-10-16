@@ -46,6 +46,16 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
 
     // Sanitize paint/layout/filter to avoid Mapbox validation errors when
     // style contains properties that don't apply to the chosen layer type.
+    const allowedLayoutProps: Record<string, string[]> = {
+      fill: ['visibility'],
+      line: ['visibility'],
+      circle: ['visibility'],
+      symbol: ['visibility', 'text-field', 'text-size', 'text-font', 'text-offset', 'icon-image', 'icon-size', 'symbol-placement', 'symbol-spacing', 'symbol-sort-key', 'symbol-z-order', 'icon-allow-overlap', 'text-allow-overlap'],
+      'fill-extrusion': ['visibility'],
+      raster: ['visibility'],
+      background: ['visibility']
+    }
+
     const sanitizeStyle = (s: any, type: string) => {
       const out: any = {}
 
@@ -60,7 +70,13 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
       }
 
       if (s?.layout && typeof s.layout === 'object') {
-        out.layout = { ...s.layout }
+        const allowed = allowedLayoutProps[type] || ['visibility']
+        out.layout = {}
+        Object.keys(s.layout).forEach((k) => {
+          if (allowed.includes(k)) {
+            out.layout[k] = s.layout[k]
+          }
+        })
       }
 
       if (Array.isArray(s?.filter)) {
@@ -121,12 +137,20 @@ export const updateLayerStyle = (map: mapboxgl.Map, layerId: string, style: Laye
   if (map.getLayer(layerId)) {
     if (style.paint) {
       Object.keys(style.paint).forEach(property => {
-        map.setPaintProperty(layerId, property, style.paint![property])
+        try {
+          map.setPaintProperty(layerId, property, style.paint![property])
+        } catch (e) {
+          console.warn(`Failed to set paint property ${property} on ${layerId}:`, e)
+        }
       })
     }
     if (style.layout) {
       Object.keys(style.layout).forEach(property => {
-        map.setLayoutProperty(layerId, property, style.layout![property])
+        try {
+          map.setLayoutProperty(layerId, property, style.layout![property])
+        } catch (e) {
+          console.warn(`Failed to set layout property ${property} on ${layerId}:`, e)
+        }
       })
     }
   }

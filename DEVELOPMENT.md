@@ -169,6 +169,10 @@ npm run dev
 - Add small example test suites (backend: health endpoint; frontend: snapshot or unit test)
 - Add instructions for running Prisma locally if you contribute schema changes
 
+## Open tasks
+
+- Verify end-to-end dataset highlighting with the new `public_id` lookup (backend import → GeoServer WFS → frontend selection)
+
 ---
 
 If you'd like, I can:

@@ -97,7 +97,14 @@ export interface Layer {
 
 export interface LoginRequest {
   email: string
-  password: string
+  otp?: string
+  session?: string
+}
+
+export interface RequestOtpResponse {
+  message: string
+  challenge?: string | null
+  session?: string | null
 }
 
 export interface RegisterRequest {

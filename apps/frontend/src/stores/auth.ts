@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
+import type { User, LoginRequest, RegisterRequest, AuthResponse, RequestOtpResponse } from '@/types'
 import { api } from '@/utils/api'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -39,6 +39,18 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('auth_user', JSON.stringify(userData))
       
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+    } catch (error) {
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const requestOtp = async (email: string): Promise<RequestOtpResponse> => {
+    isLoading.value = true
+    try {
+      const response = await api.post<RequestOtpResponse>('/auth/request-otp', { email })
+      return response.data
     } catch (error) {
       throw error
     } finally {
@@ -101,6 +113,7 @@ export const useAuthStore = defineStore('auth', () => {
   isViewer,
     initializeAuth,
     login,
+    requestOtp,
     register,
     logout,
     refreshProfile,

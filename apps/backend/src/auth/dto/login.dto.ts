@@ -10,11 +10,18 @@ export class LoginDto {
   email: string;
 
   @ApiProperty({
-    description: 'User password',
-    example: 'password123',
-    minLength: 8,
+    description: 'One-time password (OTP) sent to the user email',
+    example: '123456',
+    minLength: 4,
   })
   @IsString()
-  @MinLength(8)
-  password: string;
+  otp: string;
+
+  @ApiProperty({
+    description: 'Cognito session token returned by initiate auth (required for verifying OTP in some flows)',
+    example: 'session-token',
+    required: false,
+  })
+  @IsString()
+  session?: string;
 }

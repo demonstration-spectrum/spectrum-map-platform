@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CognitoIdentityProviderClient, InitiateAuthCommand, SignUpCommand, ConfirmSignUpCommand, AdminCreateUserCommand } from '@aws-sdk/client-cognito-identity-provider';
+  import { 
+  CognitoIdentityProviderClient,
+  InitiateAuthCommand,
+  RespondToAuthChallengeCommand,
+  SignUpCommand,
+  ConfirmSignUpCommand,
+  AdminCreateUserCommand,
+} from '@aws-sdk/client-cognito-identity-provider';
 
 @Injectable()
 export class CognitoService {
@@ -45,6 +52,101 @@ export class CognitoService {
       return null;
     } catch (error) {
       console.error('Cognito authentication error:', error);
+      return null;
+    }
+  }
+
+  // Start OTP flow by initiating a CUSTOM_AUTH challenge (requires Cognito Lambda triggers to send OTP email)
+  async sendOtp(email: string) {
+    try {
+      // Start with USER_AUTH and prefer EMAIL_OTP. Cognito will either directly return EMAIL_OTP
+      // or return AvailableChallenges that we can select from.
+      const initCmd = new InitiateAuthCommand({
+        ClientId: this.clientId,
+        AuthFlow: 'USER_AUTH',
+        AuthParameters: {
+          USERNAME: email,
+          PREFERRED_CHALLENGE: 'EMAIL_OTP',
+        },
+      });
+
+      const initResp = await this.cognitoClient.send(initCmd);
+
+      // If Cognito immediately returned the EMAIL_OTP challenge, return session.
+      if (initResp.ChallengeName === 'EMAIL_OTP') {
+        return { challenge: 'EMAIL_OTP', session: initResp.Session || null };
+      }
+
+      // Some responses include an AvailableChallenges array. Check ChallengeParameters if present.
+      const availableRaw = initResp.ChallengeParameters?.AvailableChallenges || initResp.ChallengeParameters?.availableChallenges;
+
+      if (availableRaw) {
+        // availableRaw may be a JSON string or comma-separated string. Try to parse.
+        let available: string[] = [];
+        try {
+          available = Array.isArray(availableRaw) ? availableRaw : JSON.parse(availableRaw);
+        } catch (e) {
+          // fallback: split by comma
+          available = String(availableRaw).split(',').map(s => s.trim());
+        }
+
+        if (available.includes('EMAIL_OTP')) {
+          // Select EMAIL_OTP challenge
+          const selectCmd = new RespondToAuthChallengeCommand({
+            ClientId: this.clientId,
+            ChallengeName: 'SELECT_CHALLENGE',
+            ChallengeResponses: {
+              USERNAME: email,
+              ANSWER: 'EMAIL_OTP',
+            },
+            Session: initResp.Session,
+          });
+
+          const selectResp = await this.cognitoClient.send(selectCmd);
+          return { challenge: selectResp.ChallengeName || 'EMAIL_OTP', session: selectResp.Session || null };
+        }
+      }
+
+      // If no explicit EMAIL_OTP path, return what we received so client can decide.
+      return { challenge: initResp.ChallengeName || null, session: initResp.Session || null };
+    } catch (error) {
+      console.error('Cognito sendOtp error:', error);
+      throw error;
+    }
+  }
+
+  // Verify OTP by responding to the custom auth challenge
+  async verifyOtp(email: string, otp: string, session?: string) {
+    //console.log('Verifying OTP for', email, 'with session', session);
+    try {
+      // Respond with the EMAIL_OTP code
+      //console.log('Responding to EMAIL_OTP challenge', this.clientId, email, otp, session);
+      const cmd = new RespondToAuthChallengeCommand({
+        ClientId: this.clientId,
+        ChallengeName: 'EMAIL_OTP',
+        ChallengeResponses: {
+          USERNAME: email,
+          EMAIL_OTP_CODE: otp,
+        },
+        Session: session,
+      });
+
+      const response = await this.cognitoClient.send(cmd);
+      //console.log('Cognito verifyOtp response:', response);
+      if (response.AuthenticationResult?.IdToken) {
+        return {
+          sub: response.AuthenticationResult.IdToken?.split('.')[1] ?
+            JSON.parse(Buffer.from(response.AuthenticationResult.IdToken.split('.')[1], 'base64').toString()).sub : null,
+          email: email,
+          accessToken: response.AuthenticationResult.AccessToken,
+          idToken: response.AuthenticationResult.IdToken,
+          refreshToken: response.AuthenticationResult.RefreshToken,
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Cognito verifyOtp error:', error);
       return null;
     }
   }

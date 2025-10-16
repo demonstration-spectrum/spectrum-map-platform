@@ -14,13 +14,13 @@ export class AuthService {
     private cognitoService: CognitoService,
   ) {}
 
-  async validateUser(email: string, password: string): Promise<any> {
+  async validateUser(email: string, password: string, session?: string): Promise<any> {
     try {
-      // Authenticate with AWS Cognito
-      const cognitoUser = await this.cognitoService.authenticateUser(email, password);
-      
+      // For OTP flow, `password` parameter will be the OTP. Use Cognito to verify OTP and return user attributes.
+      const cognitoUser = await this.cognitoService.verifyOtp(email, password, session);
+      //console.log('Cognito user after OTP verification:', cognitoUser);
       if (!cognitoUser) {
-        throw new UnauthorizedException('Invalid credentials');
+        throw new UnauthorizedException('Invalid OTP or credentials');
       }
 
       // Find or create user in our database
@@ -34,7 +34,8 @@ export class AuthService {
           },
         },
       });
-
+      //console.log('User found in DB:', user);
+      //console.log('Available users:', await this.prisma.user.findMany());
       if (!user) {
         // Create user if they don't exist (first login)
         user = await this.createUserFromCognito(cognitoUser);
@@ -53,7 +54,7 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+    const user = await this.validateUser(loginDto.email, loginDto.otp, loginDto.session);
     
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -78,6 +79,15 @@ export class AuthService {
         adviserAccess: user.adviserAccess,
       },
     };
+  }
+
+  async requestOtp(email: string) {
+    try {
+      const resp = await this.cognitoService.sendOtp(email);
+      return { message: 'OTP requested', challenge: resp.challenge, session: resp.session };
+    } catch (error) {
+      throw new BadRequestException('Could not request OTP');
+    }
   }
 
   async register(registerDto: RegisterDto) {

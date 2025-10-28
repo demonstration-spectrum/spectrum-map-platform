@@ -131,6 +131,30 @@ export const useCorporationsStore = defineStore('corporations', () => {
     }
   }
 
+  const recover = async (id: string) => {
+    isLoading.value = true
+    try {
+      const response = await api.post(`/corporations/${id}/recover`)
+      const recovered = response.data as Corporation
+
+      const index = corporations.value.findIndex(c => c.id === id)
+      if (index !== -1) {
+        corporations.value[index] = recovered
+      } else {
+        corporations.value.unshift(recovered)
+      }
+      if (currentCorporation.value?.id === id) {
+        currentCorporation.value = recovered
+      }
+      return recovered
+    } catch (error) {
+      console.error('Failed to recover corporation:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   const setCurrentCorporation = (corporation: Corporation | null) => {
     currentCorporation.value = corporation
   }
@@ -147,6 +171,7 @@ export const useCorporationsStore = defineStore('corporations', () => {
     remove,
     grantAdviserAccess,
     revokeAdviserAccess,
+    recover,
     setCurrentCorporation
   }
 })

@@ -8,14 +8,17 @@ export const useMapsStore = defineStore('maps', () => {
   const currentMap = ref<Map | null>(null)
   const isLoading = ref(false)
 
-  const fetchMaps = async (filters?: { visibility?: string; search?: string }) => {
+  const fetchMaps = async (filters?: { visibility?: string; search?: string; corporationId?: string }) => {
     isLoading.value = true
     try {
       const params = new URLSearchParams()
       if (filters?.visibility) params.append('visibility', filters.visibility)
       if (filters?.search) params.append('search', filters.search)
       
-      const response = await api.get(`/maps?${params.toString()}`)
+  if (filters?.corporationId) params.append('corporationId', filters.corporationId)
+  const qs = params.toString()
+  const url = qs ? `/maps?${qs}` : '/maps'
+  const response = await api.get(url)
       maps.value = response.data
     } catch (error) {
       console.error('Failed to fetch maps:', error)

@@ -9,14 +9,17 @@ export const useDatasetsStore = defineStore('datasets', () => {
   const currentDataset = ref<Dataset | null>(null)
   const isLoading = ref(false)
 
-  const fetchDatasets = async (filters?: { visibility?: string; search?: string }) => {
+  const fetchDatasets = async (filters?: { visibility?: string; search?: string; corporationId?: string }) => {
     isLoading.value = true
     try {
       const params = new URLSearchParams()
       if (filters?.visibility) params.append('visibility', filters.visibility)
       if (filters?.search) params.append('search', filters.search)
       
-      const response = await api.get(`/datasets?${params.toString()}`)
+  if (filters?.corporationId) params.append('corporationId', filters.corporationId)
+  const qs = params.toString()
+  const url = qs ? `/datasets?${qs}` : '/datasets'
+  const response = await api.get(url)
       datasets.value = response.data
     } catch (error) {
       console.error('Failed to fetch datasets:', error)
@@ -71,6 +74,9 @@ export const useDatasetsStore = defineStore('datasets', () => {
       formData.append('visibility', datasetData.visibility)
       if (datasetData.defaultStyle) {
         formData.append('defaultStyle', JSON.stringify(datasetData.defaultStyle))
+      }
+      if (datasetData.corporationId) {
+        formData.append('corporationId', datasetData.corporationId)
       }
       
       const response = await api.post('/datasets', formData, {

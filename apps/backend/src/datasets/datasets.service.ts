@@ -29,29 +29,45 @@ export class DatasetsService {
       include: { corporation: true },
     });
 
-    if (!user || !user.corporationId) {
-      throw new ForbiddenException('User must belong to a corporation');
+    if (!user) {
+      throw new ForbiddenException('User not found');
     }
 
-    // Only corp admins and editors can upload datasets
-    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
-    if (!allowedRoles.includes(user.role)) {
-      throw new ForbiddenException('Insufficient permissions to upload datasets');
+    // Determine target corporation
+    let targetCorporationId: string | undefined = undefined;
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) {
+      if (!createDatasetDto.corporationId) {
+        throw new ForbiddenException('corporationId is required for staff or super admin when uploading a dataset');
+      }
+      const corp = await this.prisma.corporation.findUnique({ where: { id: createDatasetDto.corporationId } });
+      if (!corp) throw new NotFoundException('Target corporation not found');
+      targetCorporationId = createDatasetDto.corporationId;
+    } else {
+      if (!user.corporationId) {
+        throw new ForbiddenException('User must belong to a corporation');
+      }
+      // Only corp admins and editors can upload datasets
+      const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
+      if (!allowedRoles.includes(user.role)) {
+        throw new ForbiddenException('Insufficient permissions to upload datasets');
+      }
+      targetCorporationId = user.corporationId;
     }
 
     // Choose stored metadata from primary file but keep record of all uploaded files in an adjacent folder if needed
+    const { corporationId: _omitCorpId, ...restDto } = createDatasetDto as any;
     let dataset = await this.prisma.dataset.create({
       data: {
-        name: createDatasetDto.name,
-        description: createDatasetDto.description,
+        name: restDto.name,
+        description: restDto.description,
         fileName: file.originalname,
         filePath: file.path,
         fileSize: file.size,
         mimeType: file.mimetype,
-        visibility: createDatasetDto.visibility || DatasetVisibility.PRIVATE,
-        corporationId: user.corporationId,
+        visibility: restDto.visibility || DatasetVisibility.PRIVATE,
+        corporationId: targetCorporationId!,
         uploadedById: userId,
-        defaultStyle: createDatasetDto.defaultStyle,
+        defaultStyle: restDto.defaultStyle,
       },
     });
 
@@ -96,7 +112,7 @@ export class DatasetsService {
     return dataset;
   }
 
-  async findAll(userId: string, filters?: { visibility?: DatasetVisibility; search?: string }) {
+  async findAll(userId: string, filters?: { visibility?: DatasetVisibility; search?: string; corporationId?: string }) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -140,6 +156,10 @@ export class DatasetsService {
         ...condition,
         name: { contains: filters.search, mode: 'insensitive' },
       }));
+    }
+
+    if (filters?.corporationId) {
+      where.AND = [{ corporationId: filters.corporationId }];
     }
 
     return this.prisma.dataset.findMany({
@@ -390,8 +410,8 @@ export class DatasetsService {
 
     if (!user) return false;
 
-    // Super admin has access to all datasets
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+  // Super admin and staff have access to all datasets
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // User belongs to the dataset's corporation
     if (user.corporationId === dataset.corporationId) return true;
@@ -446,8 +466,8 @@ export class DatasetsService {
 
     if (!user) return false;
 
-    // Super admin can update all datasets
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+  // Super admin and staff can update all datasets
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // Only corp admins and editors from the same corporation can update
     const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];

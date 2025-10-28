@@ -21,6 +21,14 @@ export class UsersService {
       });
     }
 
+    // Staff can list all users as well (for support purposes)
+    if (requester.role === UserRole.STAFF) {
+      return this.prisma.user.findMany({
+        include: { corporation: true },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
     if (requester.role === UserRole.CORP_ADMIN && requester.corporationId) {
       return this.prisma.user.findMany({
         where: { corporationId: requester.corporationId },
@@ -42,7 +50,8 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     // Super admin can view any user; corp admin can view users in their corp
-    if (requester.role === UserRole.SUPER_ADMIN) return user;
+  if (requester.role === UserRole.SUPER_ADMIN) return user;
+  if (requester.role === UserRole.STAFF) return user;
     if (requester.role === UserRole.CORP_ADMIN && requester.corporationId === user.corporationId) return user;
 
     // user can view self
@@ -55,8 +64,8 @@ export class UsersService {
     const requester = await this.prisma.user.findUnique({ where: { id: requestingUserId } });
     if (!requester) throw new NotFoundException('Requesting user not found');
 
-    if (requester.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admins can create users');
+    if (requester.role !== UserRole.SUPER_ADMIN && requester.role !== UserRole.STAFF) {
+      throw new ForbiddenException('Only super admins or staff can create users');
     }
 
     // Ensure email not already exist
@@ -72,14 +81,28 @@ export class UsersService {
     );
 
     // Create in Prisma
+    // Enforce role/corporation constraints for Staff
+    let targetRole = createUserDto.role || UserRole.EDITOR;
+    let targetCorporationId = createUserDto.corporationId;
+    const allowedCorpRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR, UserRole.VIEWER, UserRole.ADVISER];
+    if (requester.role === UserRole.STAFF) {
+      if (!targetCorporationId) {
+        throw new BadRequestException('corporationId is required when staff creates a user');
+      }
+      if (!targetRole || !allowedCorpRoles.includes(targetRole)) {
+        throw new BadRequestException('Staff can only create users with roles: CORP_ADMIN, EDITOR, VIEWER, ADVISER');
+      }
+      // Prevent creating SUPER_ADMIN or STAFF
+    }
+
     const user = await this.prisma.user.create({
       data: {
         email: createUserDto.email,
         cognitoSub: cognitoResp.sub,
         firstName: createUserDto.firstName,
         lastName: createUserDto.lastName,
-        role: createUserDto.role || UserRole.EDITOR,
-        corporationId: createUserDto.corporationId,
+        role: targetRole,
+        corporationId: targetCorporationId,
       },
       include: { corporation: true },
     });
@@ -94,10 +117,10 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    // Only super admin can change role or corporation for arbitrary users
-    if (requester.role !== UserRole.SUPER_ADMIN) {
+    // Only super admin or staff can modify other users
+    if (requester.role !== UserRole.SUPER_ADMIN && requester.role !== UserRole.STAFF) {
       // allow users to update own profile (first/last name)
-      if (requester.id !== id) throw new ForbiddenException('Only super admins can modify other users');
+      if (requester.id !== id) throw new ForbiddenException('Only super admins or staff can modify other users');
     }
 
     const data: any = {};
@@ -131,23 +154,54 @@ export class UsersService {
       }
     }
 
-    // Only SUPER_ADMIN can change role or corporation
-    if (dto.role !== undefined && requester.role === UserRole.SUPER_ADMIN) data.role = dto.role;
-    if (dto.corporationId !== undefined && requester.role === UserRole.SUPER_ADMIN) data.corporationId = dto.corporationId;
+    // SUPER_ADMIN can change any role/corporation; STAFF limited to corp-level roles
+    if (dto.role !== undefined) {
+      if (requester.role === UserRole.SUPER_ADMIN) {
+        data.role = dto.role;
+      } else if (requester.role === UserRole.STAFF) {
+        const allowedCorpRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR, UserRole.VIEWER, UserRole.ADVISER];
+        if (!allowedCorpRoles.includes(dto.role)) {
+          throw new ForbiddenException('Staff can only assign roles: CORP_ADMIN, EDITOR, VIEWER, ADVISER');
+        }
+        // Prevent changing role of privileged users
+        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) {
+          throw new ForbiddenException('Cannot modify privileged user roles');
+        }
+        data.role = dto.role;
+      }
+    }
+
+    if (dto.corporationId !== undefined) {
+      if (requester.role === UserRole.SUPER_ADMIN) {
+        data.corporationId = dto.corporationId;
+      } else if (requester.role === UserRole.STAFF) {
+        // Staff can reassign corporation for non-privileged users
+        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) {
+          throw new ForbiddenException('Cannot modify privileged users');
+        }
+        data.corporationId = dto.corporationId;
+      }
+    }
 
     // Handle isActive toggling and mirror in Cognito
-    if (dto.isActive !== undefined && requester.role === UserRole.SUPER_ADMIN) {
-      data.isActive = dto.isActive;
-      if (user.cognitoSub) {
-        try {
-          if (dto.isActive) {
-            await this.cognitoService.enableUser(user.cognitoSub);
-          } else {
-            await this.cognitoService.disableUser(user.cognitoSub);
+    if (dto.isActive !== undefined) {
+      if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.STAFF) {
+        // Staff cannot deactivate privileged users
+        if (requester.role === UserRole.STAFF && (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF)) {
+          throw new ForbiddenException('Cannot modify privileged users');
+        }
+        data.isActive = dto.isActive;
+        if (user.cognitoSub) {
+          try {
+            if (dto.isActive) {
+              await this.cognitoService.enableUser(user.cognitoSub);
+            } else {
+              await this.cognitoService.disableUser(user.cognitoSub);
+            }
+          } catch (err) {
+            console.error('Failed to update user enabled state in Cognito:', err);
+            // continue; DB will still be updated
           }
-        } catch (err) {
-          console.error('Failed to update user enabled state in Cognito:', err);
-          // continue; DB will still be updated
         }
       }
     }
@@ -159,12 +213,17 @@ export class UsersService {
     const requester = await this.prisma.user.findUnique({ where: { id: requestingUserId } });
     if (!requester) throw new NotFoundException('Requesting user not found');
 
-    if (requester.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admins can deactivate users');
+    if (requester.role !== UserRole.SUPER_ADMIN && requester.role !== UserRole.STAFF) {
+      throw new ForbiddenException('Only super admins or staff can deactivate users');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
+
+    // Staff cannot deactivate privileged users
+    if (requester.role === UserRole.STAFF && (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF)) {
+      throw new ForbiddenException('Cannot deactivate privileged users');
+    }
 
     // Soft delete / deactivate
     return this.prisma.user.update({ where: { id }, data: { isActive: false }, include: { corporation: true } });

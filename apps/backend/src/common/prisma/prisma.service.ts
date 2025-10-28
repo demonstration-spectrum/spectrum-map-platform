@@ -33,8 +33,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
     if (!user) return false;
 
-    // Super admin has access to all corporations
-    if (user.role === 'SUPER_ADMIN') return true;
+  // Super admin and staff have access to all corporations
+  if (user.role === 'SUPER_ADMIN' || user.role === 'STAFF') return true;
 
     // User belongs to the corporation
     if (user.corporationId === corporationId) return true;
@@ -62,8 +62,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
     const corporationIds: string[] = [];
 
-    // Super admin has access to all corporations
-    if (user.role === 'SUPER_ADMIN') {
+    // Super admin and staff have access to all corporations
+    if (user.role === 'SUPER_ADMIN' || user.role === 'STAFF') {
       const allCorporations = await this.corporation.findMany({
         where: { status: 'ACTIVE' },
         select: { id: true },

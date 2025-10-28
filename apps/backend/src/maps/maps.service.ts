@@ -14,20 +14,39 @@ export class MapsService {
       include: { corporation: true },
     });
 
-    if (!user || !user.corporationId) {
-      throw new ForbiddenException('User must belong to a corporation');
+    if (!user) {
+      throw new ForbiddenException('User not found');
     }
 
-    // Only corp admins and editors can create maps
-    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
-    if (!allowedRoles.includes(user.role)) {
-      throw new ForbiddenException('Insufficient permissions to create maps');
+    // Determine target corporation
+    let targetCorporationId: string | undefined = undefined;
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) {
+      // Staff/Super Admin can create for any specified corporation
+      if (!createMapDto.corporationId) {
+        throw new ForbiddenException('corporationId is required for staff or super admin when creating a map');
+      }
+      // Verify corporation exists
+      const corp = await this.prisma.corporation.findUnique({ where: { id: createMapDto.corporationId } });
+      if (!corp) throw new NotFoundException('Target corporation not found');
+      targetCorporationId = createMapDto.corporationId;
+    } else {
+      // Regular corp users must belong to a corporation
+      if (!user.corporationId) {
+        throw new ForbiddenException('User must belong to a corporation');
+      }
+      // Only corp admins and editors can create maps
+      const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
+      if (!allowedRoles.includes(user.role)) {
+        throw new ForbiddenException('Insufficient permissions to create maps');
+      }
+      targetCorporationId = user.corporationId;
     }
 
+    const { corporationId: _omitCorpId, ...rest } = createMapDto as any;
     return this.prisma.map.create({
       data: {
-        ...createMapDto,
-        corporationId: user.corporationId,
+        ...(rest as any),
+        corporationId: targetCorporationId!,
         createdById: userId,
       },
       include: {
@@ -47,7 +66,7 @@ export class MapsService {
     });
   }
 
-  async findAll(userId: string, filters?: { visibility?: MapVisibility; search?: string }) {
+  async findAll(userId: string, filters?: { visibility?: MapVisibility; search?: string; corporationId?: string }) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -78,6 +97,11 @@ export class MapsService {
 
     if (filters?.visibility) {
       where.visibility = filters.visibility;
+    }
+
+    if (filters?.corporationId) {
+      // Narrow results to a specific corporation if provided
+      where.AND = [{ corporationId: filters.corporationId }];
     }
 
     if (filters?.search) {
@@ -149,6 +173,12 @@ export class MapsService {
 
     if (!map) {
       throw new NotFoundException('Map not found');
+    }
+
+    // Fast-path: super admin and staff can access all maps
+    const currentUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (currentUser && (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.STAFF)) {
+      return map;
     }
 
     // Check access permissions
@@ -313,8 +343,8 @@ export class MapsService {
 
     if (!user) return false;
 
-    // Super admin has access to all maps
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+  // Super admin and staff have access to all maps
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // User belongs to the map's corporation
     if (user.corporationId === map.corporationId) return true;
@@ -343,8 +373,8 @@ export class MapsService {
 
     if (!user) return false;
 
-    // Super admin can update all maps
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+  // Super admin and staff can update all maps
+  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // Only corp admins and editors from the same corporation can update
     const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];

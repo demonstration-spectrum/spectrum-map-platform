@@ -82,4 +82,12 @@ export class CreateMapDto {
   @IsOptional()
   @IsNumber()
   pitch?: number;
+
+  @ApiProperty({
+    description: 'Target corporation ID (Staff/Super Admin only)',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  corporationId?: string;
 }

@@ -10,6 +10,19 @@
         </div>
 
         <form @submit.prevent="handleSubmit" class="card-body space-y-6">
+          <div v-if="authStore.isStaff">
+            <label for="corp" class="block text-sm font-medium text-gray-700">
+              Target Corporation *
+            </label>
+            <select
+              id="corp"
+              v-model="selectedCorporationId"
+              class="input mt-1"
+            >
+              <option value="">Select a corporation</option>
+              <option v-for="c in corporations" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </div>
           <div>
             <label for="name" class="block text-sm font-medium text-gray-700">
               Map Name *
@@ -137,21 +150,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useToast } from 'vue-toastification'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import type { CreateMapRequest } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import { useCorporationsStore } from '@/stores/corporations'
+import { MapVisibility } from '@/types'
 
 const router = useRouter()
+const route = useRoute()
 const mapsStore = useMapsStore()
 const toast = useToast()
+const authStore = useAuthStore()
+const corporationsStore = useCorporationsStore()
+const corporations = ref<{ id: string; name: string }[]>([])
+const selectedCorporationId = ref<string>((route.query.corporationId as string) || '')
 
 const form = ref<CreateMapRequest>({
   name: '',
   description: '',
-  visibility: 'PRIVATE',
+  visibility: MapVisibility.PRIVATE,
   password: '',
   centerLat: undefined,
   centerLng: undefined,
@@ -172,11 +193,19 @@ const handleSubmit = async () => {
     return
   }
 
+  if (authStore.isStaff && !selectedCorporationId.value) {
+    error.value = 'Please select a target corporation'
+    return
+  }
+
   isLoading.value = true
   error.value = ''
 
   try {
-    const newMap = await mapsStore.createMap(form.value)
+    const payload: CreateMapRequest = { ...form.value }
+    const corporationId = selectedCorporationId.value || (route.query.corporationId as string) || undefined
+    if (corporationId) payload.corporationId = corporationId
+    const newMap = await mapsStore.createMap(payload)
     toast.success('Map created successfully!')
     router.push(`/maps/${newMap.id}`)
   } catch (err: any) {
@@ -185,4 +214,11 @@ const handleSubmit = async () => {
     isLoading.value = false
   }
 }
+
+onMounted(async () => {
+  if (authStore.isStaff) {
+    await corporationsStore.fetchAll()
+    corporations.value = corporationsStore.corporations
+  }
+})
 </script>

@@ -13,6 +13,7 @@ datasource db {
 // User roles enum
 enum UserRole {
   SUPER_ADMIN
+  STAFF
   CORP_ADMIN
   EDITOR
   VIEWER

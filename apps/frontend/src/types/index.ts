@@ -24,6 +24,17 @@ export interface Corporation {
     datasets: number
     maps: number
   }
+  // Present when fetched via /corporations/:id
+  users?: Array<{
+    id: string
+    email: string
+    firstName: string
+    lastName: string
+    role: UserRole
+    isActive?: boolean
+    lastLoginAt?: string
+    createdAt: string
+  }>
 }
 
 export interface CorporationAdviser {
@@ -132,6 +143,7 @@ export interface CreateMapRequest {
   zoom?: number
   bearing?: number
   pitch?: number
+  corporationId?: string
 }
 
 export interface CreateDatasetRequest {
@@ -139,6 +151,7 @@ export interface CreateDatasetRequest {
   description?: string
   visibility: DatasetVisibility
   defaultStyle?: any
+  corporationId?: string
 }
 
 export interface CreateLayerRequest {
@@ -159,6 +172,7 @@ export interface ReorderLayersRequest {
 
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
+  STAFF = 'STAFF',
   CORP_ADMIN = 'CORP_ADMIN',
   EDITOR = 'EDITOR',
   VIEWER = 'VIEWER',

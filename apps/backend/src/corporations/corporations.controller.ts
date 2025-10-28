@@ -24,9 +24,9 @@ export class CorporationsController {
   constructor(private readonly corporationsService: CorporationsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new corporation (Super Admin only)' })
+  @ApiOperation({ summary: 'Create a new corporation (Super Admin or Staff)' })
   @ApiResponse({ status: 201, description: 'Corporation created successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin access required' })
+    @ApiResponse({ status: 403, description: 'Forbidden - Super Admin or Staff access required' })
   create(@Body() createCorporationDto: CreateCorporationDto, @Request() req) {
     return this.corporationsService.create(createCorporationDto, req.user.id);
   }
@@ -49,27 +49,27 @@ export class CorporationsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update corporation (Super Admin only)' })
+  @ApiOperation({ summary: 'Update corporation (Super Admin or Staff)' })
   @ApiResponse({ status: 200, description: 'Corporation updated successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin access required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin or Staff access required' })
   @ApiResponse({ status: 404, description: 'Corporation not found' })
   update(@Param('id') id: string, @Body() updateCorporationDto: UpdateCorporationDto, @Request() req) {
     return this.corporationsService.update(id, updateCorporationDto, req.user.id);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete corporation (Super Admin only)' })
+  @ApiOperation({ summary: 'Delete corporation (Super Admin or Staff)' })
   @ApiResponse({ status: 200, description: 'Corporation deleted successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin access required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin or Staff access required' })
   @ApiResponse({ status: 404, description: 'Corporation not found' })
   remove(@Param('id') id: string, @Request() req) {
     return this.corporationsService.remove(id, req.user.id);
   }
 
   @Post(':id/recover')
-  @ApiOperation({ summary: 'Recover a soft-deleted corporation (Super Admin only)' })
+  @ApiOperation({ summary: 'Recover a soft-deleted corporation (Super Admin or Staff)' })
   @ApiResponse({ status: 200, description: 'Corporation recovered successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin access required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin or Staff access required' })
   @ApiResponse({ status: 404, description: 'Corporation not found' })
   recover(@Param('id') id: string, @Request() req) {
     return this.corporationsService.recover(id, req.user.id);

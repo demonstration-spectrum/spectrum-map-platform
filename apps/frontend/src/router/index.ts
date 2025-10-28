@@ -29,6 +29,18 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/staff',
+      name: 'staff-dashboard',
+      component: () => import('@/views/StaffDashboardView.vue'),
+      meta: { requiresAuth: true, requiresRole: 'STAFF' }
+    },
+    {
+      path: '/staff/corps/:id',
+      name: 'staff-corp',
+      component: () => import('@/views/StaffCorporationView.vue'),
+      meta: { requiresAuth: true, requiresRole: 'STAFF' }
+    },
+    {
       path: '/maps',
       name: 'maps',
       component: () => import('@/views/MapsView.vue'),
@@ -91,6 +103,9 @@ router.beforeEach((to, from, next) => {
     next('/login')
   } else if (to.meta.requiresRole && authStore.user?.role !== to.meta.requiresRole) {
     next('/dashboard')
+  } else if (to.name === 'dashboard' && authStore.user?.role === 'STAFF') {
+    // Staff users land on their staff dashboard
+    next('/staff')
   } else if (authStore.user?.role === 'VIEWER') {
     // Block viewer users from accessing editor/management routes.
     const viewerBlockedRoutes = ['datasets', 'upload-dataset', 'create-map']

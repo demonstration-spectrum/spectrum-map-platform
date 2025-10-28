@@ -38,10 +38,12 @@ export class MapsController {
     @Request() req,
     @Query('visibility') visibility?: string,
     @Query('search') search?: string,
+    @Query('corporationId') corporationId?: string,
   ) {
     const filters: any = {};
     if (visibility) filters.visibility = visibility;
     if (search) filters.search = search;
+    if (corporationId) filters.corporationId = corporationId;
 
     return this.mapsService.findAll(req.user.id, filters);
   }

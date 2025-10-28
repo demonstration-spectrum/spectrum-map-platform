@@ -9,13 +9,13 @@ export class CorporationsService {
   constructor(private prisma: PrismaService) {}
 
   async create(createCorporationDto: CreateCorporationDto, userId: string) {
-    // Only super admins can create corporations
+    // Only super admins or staff can create corporations
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
 
-    if (!user || user.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admins can create corporations');
+    if (!user || (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.STAFF)) {
+      throw new ForbiddenException('Only super admins or staff can create corporations');
     }
 
     return this.prisma.corporation.create({
@@ -39,8 +39,8 @@ export class CorporationsService {
       throw new NotFoundException('User not found');
     }
 
-    // Super admin can see all corporations
-    if (user.role === UserRole.SUPER_ADMIN) {
+    // Super admin and staff can see all corporations
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) {
       // For super admins, optionally include deleted corporations when requested
   const whereClause = includeDeleted ? {} : { status: 'ACTIVE' as any }
       return this.prisma.corporation.findMany({
@@ -114,7 +114,13 @@ export class CorporationsService {
     const corporation = await this.prisma.corporation.findUnique({
       where: { id },
       include: {
+        // Expose only corporation-level users; hide SUPER_ADMIN and STAFF from staff/corp views
         users: {
+          where: {
+            NOT: {
+              role: { in: ['SUPER_ADMIN', 'STAFF'] as any },
+            },
+          },
           select: {
             id: true,
             email: true,
@@ -152,9 +158,9 @@ export class CorporationsService {
       throw new NotFoundException('User not found');
     }
 
-    // Only super admins can update corporations
-    if (user.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admins can update corporations');
+    // Only super admins or staff can update corporations
+    if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.STAFF) {
+      throw new ForbiddenException('Only super admins or staff can update corporations');
     }
 
     const corporation = await this.prisma.corporation.findUnique({
@@ -180,9 +186,9 @@ export class CorporationsService {
       throw new NotFoundException('User not found');
     }
 
-    // Only super admins can delete corporations
-    if (user.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admins can delete corporations');
+    // Only super admins or staff can delete corporations
+    if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.STAFF) {
+      throw new ForbiddenException('Only super admins or staff can delete corporations');
     }
 
     const corporation = await this.prisma.corporation.findUnique({
@@ -207,8 +213,8 @@ export class CorporationsService {
       throw new NotFoundException('User not found');
     }
 
-    if (user.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admins can recover corporations');
+    if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.STAFF) {
+      throw new ForbiddenException('Only super admins or staff can recover corporations');
     }
 
     const corporation = await this.prisma.corporation.findUnique({ where: { id } });

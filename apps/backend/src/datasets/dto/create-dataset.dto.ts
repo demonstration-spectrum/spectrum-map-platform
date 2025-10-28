@@ -35,4 +35,12 @@ export class CreateDatasetDto {
   })
   @IsOptional()
   defaultStyle?: any;
+
+  @ApiProperty({
+    description: 'Target corporation ID (Staff/Super Admin only)',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  corporationId?: string;
 }

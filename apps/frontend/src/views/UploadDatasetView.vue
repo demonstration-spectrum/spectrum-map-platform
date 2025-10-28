@@ -10,6 +10,16 @@
         </div>
 
         <form @submit.prevent="handleSubmit" class="card-body space-y-6">
+          <!-- Corporation Selector for Staff -->
+          <div v-if="authStore.isStaff">
+            <label for="corp" class="block text-sm font-medium text-gray-700">
+              Target Corporation *
+            </label>
+            <select id="corp" v-model="selectedCorporationId" class="input mt-1">
+              <option value="">Select a corporation</option>
+              <option v-for="c in corporations" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </div>
           <!-- File Upload -->
           <div>
             <label for="file" class="block text-sm font-medium text-gray-700">
@@ -152,17 +162,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useDatasetsStore } from '@/stores/datasets'
 import { useToast } from 'vue-toastification'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { DatasetVisibility } from '@/types'
 import type { CreateDatasetRequest } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import { useCorporationsStore } from '@/stores/corporations'
 
 const router = useRouter()
+const route = useRoute()
 const datasetsStore = useDatasetsStore()
 const toast = useToast()
+const authStore = useAuthStore()
+const corporationsStore = useCorporationsStore()
+const corporations = ref<{ id: string; name: string }[]>([])
+const selectedCorporationId = ref<string>((route.query.corporationId as string) || '')
 
 const fileInput = ref<HTMLInputElement>()
 const selectedFile = ref<File | null>(null)
@@ -247,7 +264,14 @@ const formatFileSize = (bytes: number) => {
   error.value = ''
 
   try {
-    const newDataset = await datasetsStore.uploadDataset(selectedFiles.value, form.value)
+    // Include target corporationId if provided (staff flow)
+    if (authStore.isStaff && !selectedCorporationId.value) {
+      error.value = 'Please select a target corporation'
+      return
+    }
+    const corporationId = selectedCorporationId.value || (route.query.corporationId as string) || undefined
+    const payload = { ...form.value, corporationId }
+    const newDataset = await datasetsStore.uploadDataset(selectedFiles.value, payload)
     
     toast.info('Dataset upload started. Processing in the background...')
     
@@ -277,4 +301,11 @@ const formatFileSize = (bytes: number) => {
     isLoading.value = false
   }
 }
+
+onMounted(async () => {
+  if (authStore.isStaff) {
+    await corporationsStore.fetchAll()
+    corporations.value = corporationsStore.corporations
+  }
+})
 </script>

@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!user.value && !!token.value)
   const isSuperAdmin = computed(() => user.value?.role === 'SUPER_ADMIN')
+  const isStaff = computed(() => user.value?.role === 'STAFF')
   const isCorpAdmin = computed(() => user.value?.role === 'CORP_ADMIN')
   const isEditor = computed(() => user.value?.role === 'EDITOR')
   const isAdviser = computed(() => user.value?.role === 'ADVISER')
@@ -107,6 +108,7 @@ export const useAuthStore = defineStore('auth', () => {
     isLoading,
     isAuthenticated,
     isSuperAdmin,
+    isStaff,
     isCorpAdmin,
     isEditor,
     isAdviser,

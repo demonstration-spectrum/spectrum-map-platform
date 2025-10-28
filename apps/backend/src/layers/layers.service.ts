@@ -278,8 +278,8 @@ export class LayersService {
 
     if (!user) return false;
 
-    // Super admin has access to all maps
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+    // Super admin and staff have access to all maps
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // User belongs to the map's corporation
     if (user.corporationId === map.corporationId) return true;
@@ -303,8 +303,8 @@ export class LayersService {
 
     if (!user) return false;
 
-    // Super admin can update all maps
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+    // Super admin and staff can update all maps
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // Only corp admins and editors from the same corporation can update
     const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
@@ -324,8 +324,8 @@ export class LayersService {
 
     if (!user) return false;
 
-    // Super admin has access to all datasets
-    if (user.role === UserRole.SUPER_ADMIN) return true;
+    // Super admin and staff have access to all datasets
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
 
     // User belongs to the dataset's corporation
     if (user.corporationId === dataset.corporationId) return true;

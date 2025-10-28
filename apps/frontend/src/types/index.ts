@@ -5,6 +5,7 @@ export interface User {
   lastName: string
   role: UserRole
   corporationId?: string
+  isActive?: boolean
   corporation?: Corporation
   adviserAccess?: CorporationAdviser[]
   lastLoginAt?: string

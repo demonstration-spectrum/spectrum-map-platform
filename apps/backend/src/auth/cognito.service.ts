@@ -7,6 +7,9 @@ import { ConfigService } from '@nestjs/config';
   SignUpCommand,
   ConfirmSignUpCommand,
   AdminCreateUserCommand,
+  AdminUpdateUserAttributesCommand,
+  AdminDisableUserCommand,
+  AdminEnableUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 
 @Injectable()
@@ -247,6 +250,50 @@ export class CognitoService {
       };
     } catch (error) {
       console.error('Cognito user creation error:', error);
+      throw error;
+    }
+  }
+
+  async updateUserAttributes(username: string, attributes: { Name: string; Value: string }[]) {
+    try {
+      const cmd = new AdminUpdateUserAttributesCommand({
+        UserPoolId: this.userPoolId,
+        Username: username,
+        UserAttributes: attributes,
+      });
+
+      await this.cognitoClient.send(cmd);
+      return true;
+    } catch (error) {
+      console.error('Cognito update user attributes error:', error);
+      throw error;
+    }
+  }
+
+  async disableUser(username: string) {
+    try {
+      const cmd = new AdminDisableUserCommand({
+        UserPoolId: this.userPoolId,
+        Username: username,
+      });
+      await this.cognitoClient.send(cmd);
+      return true;
+    } catch (error) {
+      console.error('Cognito disable user error:', error);
+      throw error;
+    }
+  }
+
+  async enableUser(username: string) {
+    try {
+      const cmd = new AdminEnableUserCommand({
+        UserPoolId: this.userPoolId,
+        Username: username,
+      });
+      await this.cognitoClient.send(cmd);
+      return true;
+    } catch (error) {
+      console.error('Cognito enable user error:', error);
       throw error;
     }
   }

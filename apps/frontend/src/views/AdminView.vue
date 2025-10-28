@@ -94,15 +94,15 @@
 
       <!-- Corporations Management -->
       <div class="mb-8">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-medium text-gray-900">Corporations</h2>
-          <button
-            @click="showCreateCorporationModal = true"
-            class="btn-primary"
-          >
-            Create Corporation
-          </button>
-        </div>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-medium text-gray-900">Corporations</h2>
+              <button
+                @click="showCreateCorporationModal = true"
+                class="btn-primary"
+              >
+                Create Corporation
+              </button>
+            </div>
 
         <div class="card">
           <div class="overflow-x-auto">
@@ -180,6 +180,147 @@
           </div>
         </div>
       </div>
+      <!-- Create User Modal -->
+      <div v-if="showCreateUserModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Create User</h3>
+            
+            <form @submit.prevent="createUser">
+              <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input v-model="newUser.email" type="email" required class="input" placeholder="user@example.com" />
+              </div>
+
+              <div class="mb-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">First name</label>
+                  <input v-model="newUser.firstName" type="text" required class="input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Last name</label>
+                  <input v-model="newUser.lastName" type="text" required class="input" />
+                </div>
+              </div>
+
+              <div class="mb-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                  <select v-model="newUser.role" class="input">
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                    <option value="CORP_ADMIN">CORP_ADMIN</option>
+                    <option value="EDITOR">EDITOR</option>
+                    <option value="ADVISER">ADVISER</option>
+                    <option value="VIEWER">VIEWER</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Corporation</label>
+                  <select v-model="newUser.corporationId" class="input">
+                    <option value="">(none)</option>
+                    <option v-for="c in corporations" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button @click="showCreateUserModal = false" type="button" class="btn-secondary">Cancel</button>
+                <button type="submit" :disabled="isCreatingUser" class="btn-primary">{{ isCreatingUser ? 'Creating...' : 'Create' }}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <!-- Edit Corporation Modal -->
+      <div v-if="showEditCorporationModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Edit Corporation</h3>
+
+            <form @submit.prevent="saveCorporation">
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                <input v-model="editCorporationForm.name" type="text" required class="input" placeholder="Enter corporation name" />
+              </div>
+
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea v-model="editCorporationForm.description" rows="3" class="input" placeholder="Enter corporation description" />
+              </div>
+
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select v-model="editCorporationForm.status" class="input">
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="SUSPENDED">SUSPENDED</option>
+                  <option value="DELETED">DELETED</option>
+                </select>
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button @click="showEditCorporationModal = false" type="button" class="btn-secondary">Cancel</button>
+                <button type="submit" :disabled="isSavingCorporation" class="btn-primary">{{ isSavingCorporation ? 'Saving...' : 'Save' }}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <!-- Edit User Modal -->
+      <div v-if="showEditUserModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Edit User</h3>
+            <form @submit.prevent="saveEditUser">
+              <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input v-model="editUserForm.email" type="email" required class="input" />
+              </div>
+              <div class="mb-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">First name</label>
+                  <input v-model="editUserForm.firstName" type="text" required class="input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Last name</label>
+                  <input v-model="editUserForm.lastName" type="text" required class="input" />
+                </div>
+              </div>
+
+              <div class="mb-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                  <select v-model="editUserForm.role" class="input">
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                    <option value="CORP_ADMIN">CORP_ADMIN</option>
+                    <option value="EDITOR">EDITOR</option>
+                    <option value="ADVISER">ADVISER</option>
+                    <option value="VIEWER">VIEWER</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Corporation</label>
+                  <select v-model="editUserForm.corporationId" class="input">
+                    <option value="">(none)</option>
+                    <option v-for="c in corporations" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <label class="inline-flex items-center">
+                  <input type="checkbox" v-model="editUserForm.isActive" class="form-checkbox h-4 w-4 text-primary-600" />
+                  <span class="ml-2 text-sm text-gray-700">Active</span>
+                </label>
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button @click="showEditUserModal = false" type="button" class="btn-secondary">Cancel</button>
+                <button type="submit" :disabled="isSavingEdit" class="btn-primary">{{ isSavingEdit ? 'Saving...' : 'Save' }}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
 
       <!-- Create Corporation Modal -->
       <div v-if="showCreateCorporationModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -230,15 +371,67 @@
         </div>
       </div>
     </div>
+
+    <!-- Users Management (Super Admin) -->
+    <div class="mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-medium text-gray-900">Users</h2>
+        <button
+          @click="showCreateUserModal = true"
+          class="btn-primary"
+        >
+          Create User
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Corporation</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <tr v-for="user in users" :key="user.id">
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="text-sm font-medium text-gray-900">{{ user.firstName }} {{ user.lastName }}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ user.email }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ user.role }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ user.corporation?.name || '-' }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <span :class="getActiveBadgeClass(user.isActive)" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                    {{ user.isActive ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ formatDate(user.createdAt) }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button @click="editUser(user)" class="text-primary-600 hover:text-primary-900 mr-3">Edit</button>
+                  <button @click="deleteUser(user)" class="text-red-600 hover:text-red-900">Deactivate</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useCorporationsStore } from '@/stores/corporations'
 import { useToast } from 'vue-toastification'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import type { Corporation, CorporationStatus } from '@/types'
+import { api } from '@/utils/api'
+import type { Corporation, CorporationStatus, User } from '@/types'
 
 const corporationsStore = useCorporationsStore()
 const toast = useToast()
@@ -251,11 +444,36 @@ const stats = ref({
   datasets: 0
 })
 
+// Corporations modals
 const showCreateCorporationModal = ref(false)
 const isCreating = ref(false)
-const newCorporation = ref({
-  name: '',
-  description: ''
+const newCorporation = ref({ name: '', description: '' })
+// Edit corporation modal
+const showEditCorporationModal = ref(false)
+const isSavingCorporation = ref(false)
+const editCorporationForm = ref({ id: '', name: '', description: '', status: 'ACTIVE' })
+
+// Users modals
+const showCreateUserModal = ref(false)
+const isCreatingUser = ref(false)
+const newUser = ref({
+  email: '',
+  firstName: '',
+  lastName: '',
+  role: 'EDITOR',
+  corporationId: ''
+})
+// Edit user modal
+const showEditUserModal = ref(false)
+const isSavingEdit = ref(false)
+const editUserForm = ref({
+  id: '',
+  email: '',
+  firstName: '',
+  lastName: '',
+  role: 'EDITOR',
+  corporationId: '',
+  isActive: true,
 })
 
 const getStatusBadgeClass = (status: CorporationStatus) => {
@@ -271,9 +489,27 @@ const getStatusBadgeClass = (status: CorporationStatus) => {
   }
 }
 
+const getActiveBadgeClass = (isActive?: boolean) => {
+  return isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+}
+
 const formatDate = (dateString: string) => {
+  if (!dateString) return '-'
   const date = new Date(dateString)
   return date.toLocaleDateString()
+}
+
+// Users list (fetched from new /users endpoint)
+const users = ref<User[]>([])
+
+const loadUsers = async () => {
+  try {
+    const resp = await api.get('/users')
+    users.value = resp.data || []
+    stats.value.users = users.value.length
+  } catch (error) {
+    console.error('Failed to load users:', error)
+  }
 }
 
 const createCorporation = async () => {
@@ -294,8 +530,33 @@ const createCorporation = async () => {
 }
 
 const editCorporation = (corporation: Corporation) => {
-  // TODO: Implement corporation editing
-  toast.info('Corporation editing coming soon!')
+  editCorporationForm.value = {
+    id: corporation.id,
+    name: corporation.name,
+    description: corporation.description || '',
+    status: corporation.status || 'ACTIVE',
+  }
+  showEditCorporationModal.value = true
+}
+
+const saveCorporation = async () => {
+  if (!editCorporationForm.value.name) return
+  isSavingCorporation.value = true
+  try {
+    await corporationsStore.update(editCorporationForm.value.id, {
+      name: editCorporationForm.value.name,
+      description: editCorporationForm.value.description,
+      status: editCorporationForm.value.status,
+    })
+    toast.success('Corporation updated')
+    showEditCorporationModal.value = false
+    await loadCorporations()
+  } catch (error) {
+    console.error('Failed to update corporation', error)
+    toast.error('Failed to update corporation')
+  } finally {
+    isSavingCorporation.value = false
+  }
 }
 
 const deleteCorporation = async (corporation: Corporation) => {
@@ -312,18 +573,97 @@ const deleteCorporation = async (corporation: Corporation) => {
   }
 }
 
+// --- Users CRUD (create implemented client-side using /auth/register) ---
+const createUser = async () => {
+  if (!newUser.value.email || !newUser.value.firstName || !newUser.value.lastName) return
+
+  isCreatingUser.value = true
+  try {
+    await api.post('/users', {
+      email: newUser.value.email,
+      firstName: newUser.value.firstName,
+      lastName: newUser.value.lastName,
+      role: newUser.value.role,
+      corporationId: newUser.value.corporationId,
+    })
+
+    toast.success('User created successfully')
+    showCreateUserModal.value = false
+    newUser.value = { email: '', firstName: '', lastName: '', role: 'EDITOR', corporationId: '' }
+    await loadUsers()
+    await loadCorporations()
+  } catch (error) {
+    toast.error('Failed to create user')
+  } finally {
+    isCreatingUser.value = false
+  }
+}
+
+const editUser = (user: User) => {
+  // Open edit modal and populate form
+  editUserForm.value = {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role,
+    corporationId: user.corporationId || '',
+    isActive: user.isActive !== false,
+  }
+  showEditUserModal.value = true
+}
+
+const deleteUser = async (user: User) => {
+  if (!confirm(`Are you sure you want to deactivate ${user.email}?`)) return
+
+  try {
+    await api.delete(`/users/${user.id}`)
+    toast.success('User deactivated')
+    await loadUsers()
+    await loadCorporations()
+  } catch (error) {
+    toast.error('Failed to deactivate user')
+  }
+}
+
+const saveEditUser = async () => {
+  const id = editUserForm.value.id
+  if (!id) return
+
+  isSavingEdit.value = true
+  try {
+    await api.patch(`/users/${id}`, {
+      email: editUserForm.value.email,
+      firstName: editUserForm.value.firstName,
+      lastName: editUserForm.value.lastName,
+      role: editUserForm.value.role,
+      corporationId: editUserForm.value.corporationId || undefined,
+      isActive: editUserForm.value.isActive,
+    })
+
+    toast.success('User updated')
+    showEditUserModal.value = false
+    await Promise.all([loadUsers(), loadCorporations()])
+  } catch (error) {
+    console.error('Failed to update user', error)
+    toast.error('Failed to update user')
+  } finally {
+    isSavingEdit.value = false
+  }
+}
+
 const loadCorporations = async () => {
   try {
     await corporationsStore.fetchAll()
     corporations.value = corporationsStore.corporations
     stats.value.corporations = corporations.value.length
-    // TODO: Load other stats
+    // TODO: compute other stats (users, maps, datasets) when endpoints available
   } catch (error) {
     toast.error('Failed to load corporations')
   }
 }
 
 onMounted(async () => {
-  await loadCorporations()
+  await Promise.all([loadCorporations(), loadUsers()])
 })
 </script>

@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CorporationsService } from './corporations.service';
@@ -33,8 +34,9 @@ export class CorporationsController {
   @Get()
   @ApiOperation({ summary: 'Get all accessible corporations' })
   @ApiResponse({ status: 200, description: 'Corporations retrieved successfully' })
-  findAll(@Request() req) {
-    return this.corporationsService.findAll(req.user.id);
+  findAll(@Request() req, @Query('includeDeleted') includeDeleted?: string) {
+    const include = includeDeleted === 'true'
+    return this.corporationsService.findAll(req.user.id, include);
   }
 
   @Get(':id')
@@ -62,6 +64,15 @@ export class CorporationsController {
   @ApiResponse({ status: 404, description: 'Corporation not found' })
   remove(@Param('id') id: string, @Request() req) {
     return this.corporationsService.remove(id, req.user.id);
+  }
+
+  @Post(':id/recover')
+  @ApiOperation({ summary: 'Recover a soft-deleted corporation (Super Admin only)' })
+  @ApiResponse({ status: 200, description: 'Corporation recovered successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Super Admin access required' })
+  @ApiResponse({ status: 404, description: 'Corporation not found' })
+  recover(@Param('id') id: string, @Request() req) {
+    return this.corporationsService.recover(id, req.user.id);
   }
 
   @Post(':id/advisers/:adviserId')

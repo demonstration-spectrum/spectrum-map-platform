@@ -94,15 +94,21 @@
 
       <!-- Corporations Management -->
       <div class="mb-8">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-medium text-gray-900">Corporations</h2>
-              <button
-                @click="showCreateCorporationModal = true"
-                class="btn-primary"
-              >
-                Create Corporation
-              </button>
-            </div>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-medium text-gray-900">Corporations</h2>
+          <div class="flex items-center space-x-3">
+            <label class="inline-flex items-center text-sm">
+              <input type="checkbox" v-model="showDeleted" class="form-checkbox h-4 w-4" />
+              <span class="ml-2 text-gray-600">Show deleted</span>
+            </label>
+            <button
+              @click="showCreateCorporationModal = true"
+              class="btn-primary"
+            >
+              Create Corporation
+            </button>
+          </div>
+        </div>
 
         <div class="card">
           <div class="overflow-x-auto">
@@ -161,18 +167,28 @@
                     {{ formatDate(corporation.createdAt) }}
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      @click="editCorporation(corporation)"
-                      class="text-primary-600 hover:text-primary-900 mr-3"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      @click="deleteCorporation(corporation)"
-                      class="text-red-600 hover:text-red-900"
-                    >
-                      Delete
-                    </button>
+                    <template v-if="corporation.status !== 'DELETED'">
+                      <button
+                        @click="editCorporation(corporation)"
+                        class="text-primary-600 hover:text-primary-900 mr-3"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        @click="deleteCorporation(corporation)"
+                        class="text-red-600 hover:text-red-900"
+                      >
+                        Delete
+                      </button>
+                    </template>
+                    <template v-else>
+                      <button
+                        @click="recoverCorporation(corporation)"
+                        class="text-green-600 hover:text-green-900 mr-3"
+                      >
+                        Recover
+                      </button>
+                    </template>
                   </td>
                 </tr>
               </tbody>
@@ -426,7 +442,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useCorporationsStore } from '@/stores/corporations'
 import { useToast } from 'vue-toastification'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -451,7 +467,7 @@ const newCorporation = ref({ name: '', description: '' })
 // Edit corporation modal
 const showEditCorporationModal = ref(false)
 const isSavingCorporation = ref(false)
-const editCorporationForm = ref({ id: '', name: '', description: '', status: 'ACTIVE' })
+const editCorporationForm = ref({ id: '', name: '', description: '', status: 'ACTIVE' as unknown as CorporationStatus })
 
 // Users modals
 const showCreateUserModal = ref(false)
@@ -546,7 +562,7 @@ const saveCorporation = async () => {
     await corporationsStore.update(editCorporationForm.value.id, {
       name: editCorporationForm.value.name,
       description: editCorporationForm.value.description,
-      status: editCorporationForm.value.status,
+      status: editCorporationForm.value.status as CorporationStatus,
     })
     toast.success('Corporation updated')
     showEditCorporationModal.value = false
@@ -570,6 +586,20 @@ const deleteCorporation = async (corporation: Corporation) => {
     await loadCorporations()
   } catch (error) {
     toast.error('Failed to delete corporation')
+  }
+}
+
+const recoverCorporation = async (corporation: Corporation) => {
+  if (!confirm(`Are you sure you want to recover "${corporation.name}"?`)) return
+
+  try {
+    // Use update to set status ACTIVE
+  await corporationsStore.update(corporation.id, { status: 'ACTIVE' as CorporationStatus })
+    toast.success('Corporation recovered')
+    await loadCorporations()
+  } catch (error) {
+    console.error('Failed to recover corporation', error)
+    toast.error('Failed to recover corporation')
   }
 }
 
@@ -652,9 +682,12 @@ const saveEditUser = async () => {
   }
 }
 
+const showDeleted = ref(false)
+
 const loadCorporations = async () => {
   try {
-    await corporationsStore.fetchAll()
+    // For admins, allow toggling inclusion of deleted corporations
+    await corporationsStore.fetchAllAdmin(showDeleted.value)
     corporations.value = corporationsStore.corporations
     stats.value.corporations = corporations.value.length
     // TODO: compute other stats (users, maps, datasets) when endpoints available
@@ -665,5 +698,9 @@ const loadCorporations = async () => {
 
 onMounted(async () => {
   await Promise.all([loadCorporations(), loadUsers()])
+})
+
+watch(showDeleted, async () => {
+  await loadCorporations()
 })
 </script>

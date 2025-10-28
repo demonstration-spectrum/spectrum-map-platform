@@ -23,7 +23,7 @@ export class CorporationsService {
     });
   }
 
-  async findAll(userId: string) {
+  async findAll(userId: string, includeDeleted = false) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -41,8 +41,10 @@ export class CorporationsService {
 
     // Super admin can see all corporations
     if (user.role === UserRole.SUPER_ADMIN) {
+      // For super admins, optionally include deleted corporations when requested
+  const whereClause = includeDeleted ? {} : { status: 'ACTIVE' as any }
       return this.prisma.corporation.findMany({
-        where: { status: 'ACTIVE' },
+        where: whereClause,
         include: {
           _count: {
             select: {
@@ -195,6 +197,34 @@ export class CorporationsService {
     return this.prisma.corporation.update({
       where: { id },
       data: { status: 'DELETED' },
+    });
+  }
+
+  async recover(id: string, userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only super admins can recover corporations');
+    }
+
+    const corporation = await this.prisma.corporation.findUnique({ where: { id } });
+
+    if (!corporation) {
+      throw new NotFoundException('Corporation not found');
+    }
+
+    if (corporation.status !== 'DELETED') {
+      // nothing to do
+      return corporation;
+    }
+
+    return this.prisma.corporation.update({
+      where: { id },
+      data: { status: 'ACTIVE' },
     });
   }
 

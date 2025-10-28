@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Corporation } from '@/types'
+import type { Corporation, CorporationStatus } from '@/types'
 import { api } from '@/utils/api'
 
 export const useCorporationsStore = defineStore('corporations', () => {
@@ -15,6 +15,20 @@ export const useCorporationsStore = defineStore('corporations', () => {
       corporations.value = response.data
     } catch (error) {
       console.error('Failed to fetch corporations:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const fetchAllAdmin = async (includeDeleted = false) => {
+    isLoading.value = true
+    try {
+      const url = includeDeleted ? '/corporations?includeDeleted=true' : '/corporations'
+      const response = await api.get(url)
+      corporations.value = response.data
+    } catch (error) {
+      console.error('Failed to fetch corporations (admin):', error)
       throw error
     } finally {
       isLoading.value = false
@@ -50,7 +64,7 @@ export const useCorporationsStore = defineStore('corporations', () => {
     }
   }
 
-  const update = async (id: string, corporationData: { name?: string; description?: string }) => {
+  const update = async (id: string, corporationData: { name?: string; description?: string; status?: CorporationStatus }) => {
     isLoading.value = true
     try {
       const response = await api.patch(`/corporations/${id}`, corporationData)
@@ -125,7 +139,8 @@ export const useCorporationsStore = defineStore('corporations', () => {
     corporations,
     currentCorporation,
     isLoading,
-    fetchAll,
+  fetchAll,
+  fetchAllAdmin,
     fetchOne,
     create,
     update,

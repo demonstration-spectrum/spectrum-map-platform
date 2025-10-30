@@ -124,10 +124,92 @@
       </div>
       <div class="p-4 overflow-y-auto h-[calc(100%-64px)]">
         <div class="space-y-6">
-          <!-- Paint Properties -->
+          <!-- Paint Properties: show controls depending on layer type -->
           <section>
             <h4 class="text-sm font-semibold mb-2">Paint Properties</h4>
-            <div class="grid grid-cols-2 gap-4">
+
+            <!-- Polygon / Fill layers -->
+            <div v-if="layerType === 'fill'" class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Fill Color</label>
+                <input type="color" v-model="currentLayer.style._simple.fillColor" class="w-16 h-8 p-0" />
+                <input v-model="currentLayer.style._simple.fillColor" class="input mt-2" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Fill Opacity</label>
+                <input type="range" min="0" max="1" step="0.01" v-model.number="currentLayer.style._simple.fillOpacity" />
+                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.fillOpacity }}</div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Outline Color</label>
+                <input type="color" v-model="currentLayer.style._simple.outlineColor" class="w-16 h-8 p-0" />
+                <input v-model="currentLayer.style._simple.outlineColor" class="input mt-2" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Outline Width</label>
+                <input type="range" min="0" max="50" step="0.5" v-model.number="currentLayer.style._simple.lineWidth" />
+                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.lineWidth }}</div>
+              </div>
+            </div>
+
+            <!-- Line layers -->
+            <div v-else-if="layerType === 'line'" class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Line Color</label>
+                <input type="color" v-model="currentLayer.style._simple.fillColor" class="w-16 h-8 p-0" />
+                <input v-model="currentLayer.style._simple.fillColor" class="input mt-2" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Line Width</label>
+                <input type="range" min="0" max="50" step="0.5" v-model.number="currentLayer.style._simple.lineWidth" />
+                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.lineWidth }}</div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Dash / Pattern</label>
+                <input v-model="currentLayer.style._simple.dashArray" class="input" placeholder="e.g. 2,4" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Translation / Offset (X, Y)</label>
+                <div class="flex space-x-2">
+                  <input type="number" step="1" v-model.number="currentLayer.style._simple.translateX" class="input" placeholder="X" />
+                  <input type="number" step="1" v-model.number="currentLayer.style._simple.translateY" class="input" placeholder="Y" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Point layers (circle/symbol) -->
+            <div v-else-if="layerType === 'circle' || layerType === 'symbol'" class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Point Color</label>
+                <input type="color" v-model="currentLayer.style._simple.circleColor" class="w-16 h-8 p-0" />
+                <input v-model="currentLayer.style._simple.circleColor" class="input mt-2" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Radius</label>
+                <input type="range" min="0" max="50" step="0.5" v-model.number="currentLayer.style._simple.circleRadius" />
+                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.circleRadius }}</div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Icon image (symbol)</label>
+                <input v-model="currentLayer.style._simple.iconImage" class="input" placeholder="icon name" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Label text</label>
+                <input v-model="currentLayer.style._simple.textField" class="input" placeholder="attribute name" />
+              </div>
+            </div>
+
+            <!-- Fallback: show generic controls if no type matched -->
+            <div v-else class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
                 <input type="color" v-model="currentLayer.style._simple.fillColor" class="w-16 h-8 p-0" />
@@ -138,25 +220,6 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Opacity</label>
                 <input type="range" min="0" max="1" step="0.01" v-model.number="currentLayer.style._simple.fillOpacity" />
                 <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.fillOpacity }}</div>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Line Width / Radius</label>
-                <input type="range" min="0" max="50" step="0.5" v-model.number="currentLayer.style._simple.lineWidth" />
-                <div class="text-xs text-gray-500 mt-1">{{ currentLayer.style._simple.lineWidth }}</div>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Translation / Offset (X, Y)</label>
-                <div class="flex space-x-2">
-                  <input type="number" step="1" v-model.number="currentLayer.style._simple.translateX" class="input" placeholder="X" />
-                  <input type="number" step="1" v-model.number="currentLayer.style._simple.translateY" class="input" placeholder="Y" />
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Pattern / Stroke</label>
-                <input v-model="currentLayer.style._simple.dashArray" class="input" placeholder="e.g. 2,4" />
               </div>
             </div>
           </section>
@@ -391,7 +454,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useLayersStore } from '@/stores/layers'
@@ -417,6 +480,12 @@ const { mapboxMap, selectedFeature, popupRef, initializeMap } = useMap(mapContai
 
 // Extended editor state
 const availableAttributes = ref<string[]>([])
+
+const layerType = computed(() => {
+  if (!currentLayer.value) return null
+  // prefer explicit style.type, then dataset defaultStyle.type, fallback to 'fill'
+  return currentLayer.value.style?.type || currentLayer.value.dataset?.defaultStyle?.type || 'fill'
+})
 
 const dataDriven = ref<any>({
   property: '',

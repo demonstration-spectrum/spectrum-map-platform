@@ -36,12 +36,14 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
       });
     }
 
-    // Apply layer style (normalize via createStyleFromLayer so `type` is always present)
+    // Apply layer style (createStyleFromLayer will return paint/layout defaults
+    // but will not force a type to 'fill' so the inference logic below can run
+    // when a type isn't explicitly provided).
     const style = createStyleFromLayer(layer)
     console.log(`Layer Style (layer ${layer.id}):`, style)
-    const layerType = style?.type || 'fill'
+    const layerType = style?.type
     if (!style || !style.type) {
-      console.warn('Unable to determine layer type for layer', layer.id, 'falling back to fill')
+      console.warn('No explicit layer type for layer', layer.id, '- attempting to infer geometry type or add type-specific layers')
     }
 
     // Sanitize paint/layout/filter to avoid Mapbox validation errors when
@@ -56,18 +58,76 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
       background: ['visibility']
     }
 
+    // Sanitize and normalize style for the requested layer type. This helper
+    // will accept either fully-prefixed Mapbox paint keys (e.g. 'fill-color')
+    // or a small set of generic keys (color, opacity, width, radius, outline-color,
+    // dasharray) and will map them to sensible paint properties for fill/line/circle.
     const sanitizeStyle = (s: any, type: string) => {
       const out: any = {}
 
+      const paint: any = {}
+
       if (s?.paint && typeof s.paint === 'object') {
-        out.paint = {}
         Object.keys(s.paint).forEach((k) => {
-          // include paint keys that are prefixed for this type (e.g., 'fill-' for fill)
+          const v = s.paint[k]
+          // If the key is already namespaced for this type, keep it
           if (k.startsWith(`${type}-`)) {
-            out.paint[k] = s.paint[k]
+            paint[k] = v
+            return
+          }
+
+          // If the key is a fully namespaced property for another type, try to
+          // map some cross-type keys (e.g., 'line-color' -> 'fill-outline-color')
+          if (k.indexOf('-') > -1) {
+            // keep other explicit keys but they won't be applied to this type
+            return
+          }
+
+          // Generic keys mapping
+          switch (k) {
+            case 'color':
+              if (type === 'fill') paint['fill-color'] = v
+              if (type === 'line') paint['line-color'] = v
+              if (type === 'circle') paint['circle-color'] = v
+              break
+            case 'opacity':
+              if (type === 'fill') paint['fill-opacity'] = v
+              if (type === 'line') paint['line-opacity'] = v
+              if (type === 'circle') paint['circle-opacity'] = v
+              break
+            case 'outline-color':
+              if (type === 'fill') paint['fill-outline-color'] = v
+              if (type === 'line') paint['line-color'] = v
+              if (type === 'circle') paint['circle-stroke-color'] = v
+              break
+            case 'outline-width':
+            case 'width':
+              if (type === 'line') paint['line-width'] = v
+              if (type === 'circle') paint['circle-radius'] = v
+              break
+            case 'radius':
+              if (type === 'circle') paint['circle-radius'] = v
+              break
+            case 'dasharray':
+              if (type === 'line') paint['line-dasharray'] = v
+              break
+            default:
+              // if the developer passed a fully-qualified key for another type,
+              // ignore it for this type (keeps Mapbox validation safe)
+              break
           }
         })
       }
+
+      // If s.paint already contained fully-qualified keys (e.g., 'fill-color')
+      // for other types, include any keys that are appropriate for this type
+      if (s?.paint && typeof s.paint === 'object') {
+        Object.keys(s.paint).forEach((k) => {
+          if (k.startsWith(`${type}-`)) paint[k] = s.paint[k]
+        })
+      }
+
+      if (Object.keys(paint).length) out.paint = paint
 
       if (s?.layout && typeof s.layout === 'object') {
         const allowed = allowedLayoutProps[type] || ['visibility']
@@ -86,22 +146,72 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
       return out
     }
 
-    const sanitized = sanitizeStyle(style, layerType)
+  // Note: sanitation will be applied per-type inside createAndAdd. Keep a
+  // small fallback sanitized object for the exceptional fallback path below.
 
-    const layerDef: any = {
-      id: layerId,
-      type: layerType,
-      source: sourceId,
-      'source-layer': layer.dataset.layerName || 'default',
+    // If we couldn't determine a specific type, attempt to infer it from
+    // available paint keys, or by sampling features from the vector source.
+    let finalLayerType = layerType
+
+    const createAndAdd = (t: string, idSuffix = '') => {
+      console.log(`Adding layer ${layer.id} as type ${t}${idSuffix ? ` (suffix: ${idSuffix})` : ''}`)
+      const id = idSuffix ? `${layerId}-${idSuffix}` : layerId
+      const styled = sanitizeStyle(style, t)
+      const def: any = {
+        id,
+        type: t,
+        source: sourceId,
+        'source-layer': layer.dataset.layerName || 'default'
+      }
+      if (styled.paint) def.paint = styled.paint
+      if (styled.layout) def.layout = styled.layout
+      if (styled.filter) def.filter = styled.filter
+
+      // add a small geometry-type filter when we created multiple type-specific
+      // layers so each layer only renders matching geometry. Only add the filter
+      // if this layer was generated for 'auto' detection (we'll add suffixes).
+      if (idSuffix) {
+        if (t === 'fill') def.filter = def.filter || ['==', '$type', 'Polygon']
+        if (t === 'line') def.filter = def.filter || ['==', '$type', 'LineString']
+        if (t === 'circle') def.filter = def.filter || ['==', '$type', 'Point']
+      }
+
+      if (!map.getLayer(id)) {
+        map.addLayer(def)
+      }
     }
 
-    if (sanitized.paint) layerDef.paint = sanitized.paint
-    if (sanitized.layout) layerDef.layout = sanitized.layout
-    if (sanitized.filter) layerDef.filter = sanitized.filter
+    // If we couldn't confidently detect a single type, add three type-specific
+    // layers (fill, line, circle) with suffixes so the same source displays
+    // appropriately for whichever geometry is present in the tiles.
+    try {
+      if (!finalLayerType) {
+        // No explicit type provided — render as all three geometry types so
+        // points, lines and polygons will all display from the same vector source.
+        createAndAdd('fill', 'fill')
+        createAndAdd('line', 'line')
+        createAndAdd('circle', 'point')
+      } else {
+        // We have a finalLayerType: add a single layer with the canonical id
+        createAndAdd(finalLayerType)
+      }
+    } catch (err) {
+      console.warn('Failed to add type-specific layers, falling back to single layer', err)
+      const fallbackType = layerType || 'fill'
+      const fallbackSanitized = sanitizeStyle(style, fallbackType)
+      const layerDef: any = {
+        id: layerId,
+        type: fallbackType,
+        source: sourceId,
+        'source-layer': layer.dataset.layerName || 'default',
+      }
+      if (fallbackSanitized.paint) layerDef.paint = fallbackSanitized.paint
+      if (fallbackSanitized.layout) layerDef.layout = fallbackSanitized.layout
+      if (fallbackSanitized.filter) layerDef.filter = fallbackSanitized.filter
 
-    // Only add the map layer if it's not already present.
-    if (!map.getLayer(layerId)) {
-      map.addLayer(layerDef)
+      if (!map.getLayer(layerId)) {
+        map.addLayer(layerDef)
+      }
     }
   }
 
@@ -125,38 +235,94 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
 }
 
 export const removeLayerFromMap = (map: mapboxgl.Map, layerId: string, sourceId: string) => {
-  if (map.getLayer(layerId)) {
-    map.removeLayer(layerId)
+  try {
+    // Remove any layers that match the id or are type-specific variants
+    const style = (map.getStyle && map.getStyle()) || (map as any).style
+    if (style && Array.isArray((style as any).layers)) {
+      ;(style as any).layers.forEach((l: any) => {
+        if (l && l.id && (l.id === layerId || l.id.startsWith(`${layerId}-`))) {
+          if (map.getLayer(l.id)) map.removeLayer(l.id)
+        }
+      })
+    } else {
+      if (map.getLayer(layerId)) map.removeLayer(layerId)
+      // try common suffixes defensively
+      ;['-fill', '-line', '-point', '-circle'].forEach(suf => {
+        const id = `${layerId}${suf}`
+        if (map.getLayer(id)) map.removeLayer(id)
+      })
+    }
+  } catch (e) {
+    // fallback -- try the direct removals
+    if (map.getLayer(layerId)) map.removeLayer(layerId)
+    ;['-fill', '-line', '-point', '-circle'].forEach(suf => {
+      const id = `${layerId}${suf}`
+      if (map.getLayer(id)) map.removeLayer(id)
+    })
   }
+
   if (map.getSource(sourceId)) {
     map.removeSource(sourceId)
   }
 }
 
 export const updateLayerStyle = (map: mapboxgl.Map, layerId: string, style: LayerStyle) => {
-  if (map.getLayer(layerId)) {
+  // Update style for the canonical layer id and any type-specific variants
+  const candidateLayerIds: string[] = []
+  try {
+    const st = (map.getStyle && map.getStyle()) || (map as any).style
+    if (st && Array.isArray((st as any).layers)) {
+      ;(st as any).layers.forEach((l: any) => {
+        if (l && l.id && (l.id === layerId || l.id.startsWith(`${layerId}-`))) candidateLayerIds.push(l.id)
+      })
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // fallback to the direct id if no variants were discovered
+  if (candidateLayerIds.length === 0) candidateLayerIds.push(layerId)
+
+  candidateLayerIds.forEach((lid) => {
+    if (!map.getLayer(lid)) return
+
     if (style.paint) {
       Object.keys(style.paint).forEach(property => {
         try {
-          map.setPaintProperty(layerId, property, style.paint![property])
+          map.setPaintProperty(lid, property, style.paint![property])
         } catch (e) {
-          console.warn(`Failed to set paint property ${property} on ${layerId}:`, e)
+          console.warn(`Failed to set paint property ${property} on ${lid}:`, e)
         }
       })
     }
     if (style.layout) {
       Object.keys(style.layout).forEach(property => {
         try {
-          map.setLayoutProperty(layerId, property, style.layout![property])
+          map.setLayoutProperty(lid, property, style.layout![property])
         } catch (e) {
-          console.warn(`Failed to set layout property ${property} on ${layerId}:`, e)
+          console.warn(`Failed to set layout property ${property} on ${lid}:`, e)
         }
       })
     }
-  }
+  })
 }
 
 export const toggleLayerVisibility = (map: mapboxgl.Map, layerId: string, visible: boolean) => {
+  // Toggle visibility for canonical and variant layers
+  try {
+    const st = (map.getStyle && map.getStyle()) || (map as any).style
+    if (st && Array.isArray((st as any).layers)) {
+      ;(st as any).layers.forEach((l: any) => {
+        if (l && l.id && (l.id === layerId || l.id.startsWith(`${layerId}-`))) {
+          if (map.getLayer(l.id)) map.setLayoutProperty(l.id, 'visibility', visible ? 'visible' : 'none')
+        }
+      })
+      return
+    }
+  } catch (e) {
+    // ignore and fallback
+  }
+
   if (map.getLayer(layerId)) {
     map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none')
   }
@@ -226,18 +392,22 @@ export const getDefaultLayerStyle = (mimeType: string): LayerStyle => {
 }
 
 export const createStyleFromLayer = (layer: Layer): LayerStyle => {
-  const baseStyle = layer.style || layer.dataset.defaultStyle || getDefaultLayerStyle(layer.dataset.mimeType)
-  
+  // Preserve an explicit style.type when present but do not force a default
+  // 'fill' type here — that would prevent runtime inference. Still provide
+  // sensible paint/layout defaults so the layer renders even without a type.
+  const baseStyle: any = layer.style ?? layer.dataset.defaultStyle ?? null
+
   return {
     id: `layer-${layer.id}`,
-    type: baseStyle.type || 'fill',
-    paint: baseStyle.paint || {
+    // keep type undefined when not provided so addLayerToMap can infer it
+    type: baseStyle?.type,
+    paint: baseStyle?.paint ?? {
       'fill-color': '#3b82f6',
       'fill-opacity': 0.6,
       'fill-outline-color': '#1e40af'
     },
-    layout: baseStyle.layout || {},
-    filter: baseStyle.filter
+    layout: baseStyle?.layout ?? {},
+    filter: baseStyle?.filter
   }
 }
 

@@ -110,7 +110,32 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
     // Click handler to query features and set selectedFeature
     mapboxMap.value.on('click', async (e) => {
       const m = mapboxMap.value!
-      const candidateLayerIds = layers.value.map(l => `layer-${l.id}`)
+
+      // Deterministically build candidate layer ids: for each known layer we
+      // expect a canonical id and possible type-specific variants (added when
+      // no explicit type was provided). Only include ids that actually exist on
+      // the map to avoid Mapbox errors when querying rendered features.
+      const candidateLayerIds: string[] = []
+      const suffixes = ['', '-fill', '-line', '-point']
+      for (const la of layers.value) {
+        for (const suf of suffixes) {
+          const id = `layer-${la.id}${suf}`
+          try {
+            if (m.getLayer && m.getLayer(id)) {
+              candidateLayerIds.push(id)
+            }
+          } catch (e) {
+            // ignore any getLayer errors and continue
+          }
+        }
+      }
+
+      // Fallback: if we found nothing, query using canonical ids (Mapbox will
+      // ignore non-existent layer names) so behavior matches previous code.
+      if (candidateLayerIds.length === 0) {
+        candidateLayerIds.push(...layers.value.map(l => `layer-${l.id}`))
+      }
+
       let features: mapboxgl.MapboxGeoJSONFeature[] = []
       try {
         features = candidateLayerIds.length ? m.queryRenderedFeatures(e.point, { layers: candidateLayerIds }) : m.queryRenderedFeatures(e.point)

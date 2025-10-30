@@ -118,10 +118,12 @@ export class DatasetsController {
     @Request() req,
     @Query('search') search?: string,
     @Query('ownership') ownership?: 'own' | 'shared' | 'public',
+    @Query('corporationId') corporationId?: string,
   ) {
     const filters: any = {};
     if (search) filters.search = search;
     if (ownership) filters.ownership = ownership;
+    if (corporationId) filters.corporationId = corporationId;
 
     return this.datasetsService.getDataLibrary(req.user.id, filters);
   }

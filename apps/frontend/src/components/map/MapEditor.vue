@@ -527,7 +527,8 @@ const loadLayers = async () => {
 
 const loadAvailableDatasets = async () => {
   try {
-    await datasetsStore.fetchDataLibrary()
+    const corpId = map.value?.corporationId
+    await datasetsStore.fetchDataLibrary(corpId ? { corporationId: corpId } : undefined)
     availableDatasets.value = datasetsStore.dataLibrary
   } catch (error) {
     console.error('Failed to load datasets:', error)

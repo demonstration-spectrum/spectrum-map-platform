@@ -29,12 +29,13 @@ export const useDatasetsStore = defineStore('datasets', () => {
     }
   }
 
-  const fetchDataLibrary = async (filters?: { search?: string; ownership?: 'own' | 'shared' | 'public' }) => {
+  const fetchDataLibrary = async (filters?: { search?: string; ownership?: 'own' | 'shared' | 'public'; corporationId?: string }) => {
     isLoading.value = true
     try {
       const params = new URLSearchParams()
       if (filters?.search) params.append('search', filters.search)
       if (filters?.ownership) params.append('ownership', filters.ownership)
+      if (filters?.corporationId) params.append('corporationId', filters.corporationId)
       
       const response = await api.get(`/datasets/data-library?${params.toString()}`)
       dataLibrary.value = response.data

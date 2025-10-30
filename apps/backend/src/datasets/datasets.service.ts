@@ -326,64 +326,91 @@ export class DatasetsService {
     return { message: 'Dataset shared successfully' };
   }
 
-  async getDataLibrary(userId: string, filters?: { search?: string; ownership?: 'own' | 'shared' | 'public' }) {
+  async getDataLibrary(
+    userId: string,
+    filters?: { search?: string; ownership?: 'own' | 'shared' | 'public'; corporationId?: string },
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { corporation: true },
     });
 
-    if (!user || !user.corporationId) {
-      throw new ForbiddenException('User must belong to a corporation');
+    if (!user) {
+      throw new ForbiddenException('User not found');
     }
 
-    const corporationIds = await this.prisma.getUserCorporationIds(userId);
+    // For super admins and staff, allow data library access without requiring a corporation context.
+    const isPrivileged = user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF;
+    const nonPrivCorpIds = isPrivileged ? [] : await this.prisma.getUserCorporationIds(userId);
 
-    const where: any = {
-      OR: [
-        // User's own corporation datasets
-        { corporationId: { in: corporationIds } },
-        // Public datasets
-        { visibility: DatasetVisibility.PUBLIC },
-        // Shared datasets
-        {
-          sharedWith: {
-            some: {
-              sharedWithId: { in: corporationIds },
-            },
-          },
-        },
-      ],
-    };
+    // Build OR conditions based on role and optional corporationId
+    const orConditions: any[] = [];
+    const corpId = filters?.corporationId;
 
-    if (filters?.search) {
-      where.OR = where.OR.map((condition: any) => ({
-        ...condition,
-        name: { contains: filters.search, mode: 'insensitive' },
-      }));
-    }
-
-    if (filters?.ownership) {
-      switch (filters.ownership) {
-        case 'own':
-          where.OR = [{ corporationId: { in: corporationIds } }];
-          break;
-        case 'shared':
-          where.OR = [{
-            sharedWith: {
-              some: {
-                sharedWithId: { in: corporationIds },
-              },
-            },
-          }];
-          break;
-        case 'public':
-          where.OR = [{ visibility: DatasetVisibility.PUBLIC }];
-          break;
+    if (isPrivileged) {
+      if (corpId) {
+        // In a corp context, default to that corp's datasets + shared to it + public
+        if (!filters?.ownership || filters.ownership === undefined) {
+          orConditions.push(
+            { corporationId: corpId },
+            { visibility: DatasetVisibility.PUBLIC },
+            { sharedWith: { some: { sharedWithId: corpId } } },
+          );
+        } else {
+          switch (filters.ownership) {
+            case 'own':
+              orConditions.push({ corporationId: corpId });
+              break;
+            case 'shared':
+              orConditions.push({ sharedWith: { some: { sharedWithId: corpId } } });
+              break;
+            case 'public':
+              orConditions.push({ visibility: DatasetVisibility.PUBLIC });
+              break;
+          }
+        }
+      } else {
+        // No corp context for privileged users: default to public to avoid tenant leakage
+        orConditions.push({ visibility: DatasetVisibility.PUBLIC });
+        if (filters?.ownership === 'own' || filters?.ownership === 'shared') {
+          // Without corp context, 'own' and 'shared' aren't meaningful; keep public only
+        }
+      }
+    } else {
+      // Non-privileged users: use their corporation memberships
+      if (!user.corporationId) {
+        throw new ForbiddenException('User must belong to a corporation');
+      }
+      if (!filters?.ownership) {
+        orConditions.push(
+          { corporationId: { in: nonPrivCorpIds } },
+          { visibility: DatasetVisibility.PUBLIC },
+          { sharedWith: { some: { sharedWithId: { in: nonPrivCorpIds } } } },
+        );
+      } else {
+        switch (filters.ownership) {
+          case 'own':
+            orConditions.push({ corporationId: { in: nonPrivCorpIds } });
+            break;
+          case 'shared':
+            orConditions.push({ sharedWith: { some: { sharedWithId: { in: nonPrivCorpIds } } } });
+            break;
+          case 'public':
+            orConditions.push({ visibility: DatasetVisibility.PUBLIC });
+            break;
+        }
       }
     }
 
+    // Compose where with OR and optional search as AND
+    const where: any = {};
+    if (orConditions.length) where.OR = orConditions;
+    if (filters?.search) {
+      where.AND = [...(where.AND || []), { name: { contains: filters.search, mode: 'insensitive' } }];
+    }
+
     return this.prisma.dataset.findMany({
-      where,
+      where: Object.keys(where).length ? where : undefined,
       include: {
         corporation: {
           select: {

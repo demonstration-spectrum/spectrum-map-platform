@@ -37,6 +37,7 @@ enum DatasetVisibility {
 // Map visibility enum
 enum MapVisibility {
   PRIVATE
+  SUBSCRIBED
   PASSWORD_PROTECTED
   PUBLIC
 }

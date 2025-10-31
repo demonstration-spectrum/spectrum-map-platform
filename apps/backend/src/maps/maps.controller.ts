@@ -15,6 +15,8 @@ import { MapsService } from './maps.service';
 import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { Public } from '../common/decorators/public.decorator';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt.guard';
 
 @ApiTags('maps')
 @Controller('maps')
@@ -49,6 +51,7 @@ export class MapsController {
   }
 
   @Get('public')
+  @Public()
   @ApiOperation({ summary: 'Get all public maps (no authentication required)' })
   @ApiResponse({ status: 200, description: 'Public maps retrieved successfully' })
   async getPublicMaps(@Query('search') search?: string) {
@@ -59,6 +62,8 @@ export class MapsController {
   }
 
   @Get(':id')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get map by ID' })
   @ApiResponse({ status: 200, description: 'Map retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Access denied' })
@@ -68,10 +73,13 @@ export class MapsController {
     @Request() req,
     @Query('password') password?: string,
   ) {
-    return this.mapsService.findOne(id, req.user.id, password);
+    // req.user may be undefined for unauthenticated requests
+    const userId = req && req.user ? req.user.id : undefined;
+    return this.mapsService.findOne(id, userId, password);
   }
 
   @Get(':id/password-protected')
+  @Public()
   @ApiOperation({ summary: 'Access password-protected map' })
   @ApiResponse({ status: 200, description: 'Map accessed successfully' })
   @ApiResponse({ status: 403, description: 'Invalid password' })

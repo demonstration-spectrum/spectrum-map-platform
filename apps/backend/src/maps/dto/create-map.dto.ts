@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber } from 'class-validator';
-import { MapVisibility } from '@prisma/client';
+import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
 
 export class CreateMapDto {
   @ApiProperty({
@@ -22,12 +21,12 @@ export class CreateMapDto {
 
   @ApiProperty({
     description: 'Map visibility',
-    enum: MapVisibility,
-    default: MapVisibility.PRIVATE,
+    enum: ['PRIVATE', 'PASSWORD_PROTECTED', 'PUBLIC', 'SUBSCRIBED'],
+    default: 'PRIVATE',
   })
   @IsOptional()
-  @IsEnum(MapVisibility)
-  visibility?: MapVisibility;
+  @IsString()
+  visibility?: string;
 
   @ApiProperty({
     description: 'Password for password-protected maps',

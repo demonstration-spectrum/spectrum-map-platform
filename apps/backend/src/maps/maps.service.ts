@@ -42,6 +42,14 @@ export class MapsService {
       targetCorporationId = user.corporationId;
     }
 
+    // Prevent non-staff users from creating PUBLIC or SUBSCRIBED maps
+    const createVis: any = (createMapDto as any).visibility;
+    if (createVis && (createVis === MapVisibility.PUBLIC || createVis === 'SUBSCRIBED')) {
+      if (!(user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF)) {
+        throw new ForbiddenException('Insufficient permissions to create public or subscribed maps');
+      }
+    }
+
     const { corporationId: _omitCorpId, ...rest } = createMapDto as any;
     return this.prisma.map.create({
       data: {
@@ -90,6 +98,8 @@ export class MapsService {
         { corporationId: { in: corporationIds } },
         // Public maps
         { visibility: MapVisibility.PUBLIC },
+  // Subscribed maps (any authenticated user)
+  { visibility: 'SUBSCRIBED' },
         // Password-protected maps (accessible to anyone with the password)
         { visibility: MapVisibility.PASSWORD_PROTECTED },
       ],
@@ -138,6 +148,7 @@ export class MapsService {
   }
 
   async findOne(id: string, userId: string, password?: string) {
+    console.log('Finding map with ID:', id, 'for user ID:', userId, 'with password:', password);
     const map = await this.prisma.map.findUnique({
       where: { id },
       include: {
@@ -175,13 +186,13 @@ export class MapsService {
       throw new NotFoundException('Map not found');
     }
 
-    // Fast-path: super admin and staff can access all maps
-    const currentUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    // Fast-path: if user is provided and is super admin or staff they can access all maps
+    const currentUser = userId ? await this.prisma.user.findUnique({ where: { id: userId } }) : null;
     if (currentUser && (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.STAFF)) {
       return map;
     }
 
-    // Check access permissions
+    // Check access permissions (supports unauthenticated requests)
     const hasAccess = await this.hasMapAccess(userId, map, password);
     if (!hasAccess) {
       throw new ForbiddenException('Access denied to this map');
@@ -205,9 +216,20 @@ export class MapsService {
       throw new ForbiddenException('Insufficient permissions to update this map');
     }
 
+    // If attempting to change visibility to PUBLIC or SUBSCRIBED, only staff/super admin allowed
+    const updateVis: any = (updateMapDto as any).visibility;
+    if (updateVis && (updateVis === MapVisibility.PUBLIC || updateVis === 'SUBSCRIBED')) {
+      const requestingUser = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!(requestingUser && (requestingUser.role === UserRole.SUPER_ADMIN || requestingUser.role === UserRole.STAFF))) {
+        throw new ForbiddenException('Insufficient permissions to set visibility to public or subscribed');
+      }
+    }
+
+    const { corporationId, ...rest } = updateMapDto;
+
     return this.prisma.map.update({
       where: { id },
-      data: updateMapDto,
+      data: rest as any,
       include: {
         createdBy: {
           select: {
@@ -337,14 +359,21 @@ export class MapsService {
   }
 
   private async hasMapAccess(userId: string, map: any, password?: string): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+    // Try to load user if userId provided
+    const user = userId ? await this.prisma.user.findUnique({ where: { id: userId } }) : null;
 
-    if (!user) return false;
+    // If no authenticated user: allow access only to public maps or correct password for password-protected maps
+    if (!user) {
+      if (map.visibility === MapVisibility.PUBLIC) return true;
+      if (map.visibility === MapVisibility.PASSWORD_PROTECTED && map.password === password) return true;
+      return false;
+    }
 
-  // Super admin and staff have access to all maps
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
+    // Super admin and staff have access to all maps
+    if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
+
+  // Subscribed maps: any authenticated user can access
+  if (map.visibility === 'SUBSCRIBED') return true;
 
     // User belongs to the map's corporation
     if (user.corporationId === map.corporationId) return true;

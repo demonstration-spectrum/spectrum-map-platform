@@ -92,18 +92,25 @@ export class MapsService {
 
     const corporationIds = await this.prisma.getUserCorporationIds(userId);
 
-    const where: any = {
-      OR: [
-        // User's own corporation maps
-        { corporationId: { in: corporationIds } },
-        // Public maps
-        { visibility: MapVisibility.PUBLIC },
-  // Subscribed maps (any authenticated user)
-  { visibility: 'SUBSCRIBED' },
-        // Password-protected maps (accessible to anyone with the password)
-        { visibility: MapVisibility.PASSWORD_PROTECTED },
-      ],
-    };
+    const where: any = { OR: [] as any[] };
+
+    const isStaff = user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF;
+
+    // Always include user's corporation maps
+    where.OR.push({ corporationId: { in: corporationIds } });
+
+    // Subscribed maps are visible to any authenticated user
+    where.OR.push({ visibility: 'SUBSCRIBED' });
+
+    if (isStaff) {
+      // Staff can see all public and password-protected maps in listings
+      where.OR.push({ visibility: MapVisibility.PUBLIC });
+      where.OR.push({ visibility: MapVisibility.PASSWORD_PROTECTED });
+    } else {
+      // Non-staff: only list public/password-protected maps from corporations they have access to
+      where.OR.push({ AND: [{ visibility: MapVisibility.PUBLIC }, { corporationId: { in: corporationIds } }] });
+      where.OR.push({ AND: [{ visibility: MapVisibility.PASSWORD_PROTECTED }, { corporationId: { in: corporationIds } }] });
+    }
 
     if (filters?.visibility) {
       where.visibility = filters.visibility;
@@ -274,36 +281,49 @@ export class MapsService {
     });
   }
 
-  async getPublicMaps(filters?: { search?: string }) {
-    const where: any = {
-      visibility: MapVisibility.PUBLIC,
-    };
-
+  async getPublicMaps(filters?: { search?: string }, userId?: string) {
+    const baseWhere: any = { visibility: MapVisibility.PUBLIC };
     if (filters?.search) {
-      where.name = { contains: filters.search, mode: 'insensitive' };
+      baseWhere.name = { contains: filters.search, mode: 'insensitive' };
     }
 
+    // If no user provided, do not expose a global directory of public maps
+    if (!userId) {
+      return [];
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return [];
+    }
+
+    const isStaff = user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF;
+    if (isStaff) {
+      // Staff can see all public maps
+      return this.prisma.map.findMany({
+        where: baseWhere,
+        include: {
+          corporation: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          _count: { select: { layers: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+    }
+
+    // Non-staff: only show public maps from corporations they have access to
+    const corporationIds = await this.prisma.getUserCorporationIds(userId);
     return this.prisma.map.findMany({
-      where,
+      where: {
+        AND: [
+          baseWhere,
+          { corporationId: { in: corporationIds } },
+        ],
+      },
       include: {
-        corporation: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        _count: {
-          select: {
-            layers: true,
-          },
-        },
+        corporation: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
+        _count: { select: { layers: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });

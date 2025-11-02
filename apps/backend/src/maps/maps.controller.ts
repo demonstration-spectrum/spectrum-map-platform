@@ -52,13 +52,15 @@ export class MapsController {
 
   @Get('public')
   @Public()
-  @ApiOperation({ summary: 'Get all public maps (no authentication required)' })
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Get public maps (visibility depends on requester role)' })
   @ApiResponse({ status: 200, description: 'Public maps retrieved successfully' })
-  async getPublicMaps(@Query('search') search?: string) {
+  async getPublicMaps(@Request() req, @Query('search') search?: string) {
     const filters: any = {};
     if (search) filters.search = search;
 
-    return this.mapsService.getPublicMaps(filters);
+    const userId = req && req.user ? req.user.id : undefined;
+    return this.mapsService.getPublicMaps(filters, userId);
   }
 
   @Get(':id')

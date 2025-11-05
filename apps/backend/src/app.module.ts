@@ -8,6 +8,7 @@ import { CorporationsModule } from './corporations/corporations.module';
 import { DatasetsModule } from './datasets/datasets.module';
 import { MapsModule } from './maps/maps.module';
 import { LayersModule } from './layers/layers.module';
+import { LayerGroupsModule } from './layer-groups/layer-groups.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -25,11 +26,12 @@ import { AppService } from './app.service';
     ]),
     PrismaModule,
     AuthModule,
-  UsersModule,
+    UsersModule,
     CorporationsModule,
     DatasetsModule,
     MapsModule,
     LayersModule,
+    LayerGroupsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

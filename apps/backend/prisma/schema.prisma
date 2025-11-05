@@ -183,6 +183,7 @@ model Map {
   corporation Corporation @relation(fields: [corporationId], references: [id], onDelete: Cascade)
   createdBy   User        @relation(fields: [createdById], references: [id])
   layers      Layer[]
+  layerGroups LayerGroup[]
 
   @@map("maps")
 }
@@ -204,9 +205,29 @@ model Layer {
   // Relationships
   map     Map     @relation(fields: [mapId], references: [id], onDelete: Cascade)
   dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  groupId String?
+  group   LayerGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   @@unique([mapId, datasetId])
   @@map("layers")
+}
+
+// Layer groups - group layers within a map for organization
+model LayerGroup {
+  id          String   @id @default(cuid())
+  mapId       String
+  name        String
+  order       Int
+  isCollapsed Boolean  @default(false)
+  isVisible   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  map    Map    @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  layers Layer[]
+
+  @@unique([mapId, order])
+  @@map("layer_groups")
 }
 
 // Audit log for security and compliance

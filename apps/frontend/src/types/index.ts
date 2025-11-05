@@ -101,6 +101,7 @@ export interface Layer {
   name: string
   order: number
   isVisible: boolean
+  groupId?: string | null
   createdAt: string
   updatedAt: string
   style?: any

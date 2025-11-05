@@ -4,6 +4,7 @@ import { CreateLayerDto } from './dto/create-layer.dto';
 import { UpdateLayerDto } from './dto/update-layer.dto';
 import { ReorderLayersDto } from './dto/reorder-layers.dto';
 import { UserRole } from '@prisma/client';
+import { SetLayerGroupingDto } from './dto/set-layer-grouping.dto';
 
 @Injectable()
 export class LayersService {
@@ -237,6 +238,33 @@ export class LayersService {
     await Promise.all(updatePromises);
 
     return { message: 'Layers reordered successfully' };
+  }
+
+  async setGrouping(mapId: string, dto: SetLayerGroupingDto, userId: string) {
+    console.log('dto', dto);
+    // permission & map check
+    const map = await this.prisma.map.findUnique({ where: { id: mapId } });
+    if (!map) throw new NotFoundException('Map not found');
+    const has = await this.hasMapUpdatePermission(userId, map);
+    if (!has) throw new ForbiddenException('Insufficient permissions to modify this map');
+
+    const layerIds = dto.items.map(i => i.layerId);
+    const layers = await this.prisma.layer.findMany({ where: { id: { in: layerIds }, mapId } });
+    if (layers.length !== layerIds.length) throw new BadRequestException('Some layers do not belong to this map');
+
+    // Validate groups
+    const groupIds = Array.from(new Set(dto.items.map(i => i.groupId).filter((g): g is string => !!g)));
+    if (groupIds.length) {
+      const groups = await this.prisma.layerGroup.findMany({ where: { id: { in: groupIds }, mapId } });
+      if (groups.length !== groupIds.length) throw new BadRequestException('Invalid group references');
+    }
+
+    // Apply updates in a transaction
+    await this.prisma.$transaction(
+      dto.items.map(i => this.prisma.layer.update({ where: { id: i.layerId }, data: { groupId: i.groupId ?? null, order: i.order } }))
+    );
+
+    return { message: 'Layer grouping updated' };
   }
 
   async toggleVisibility(id: string, userId: string) {

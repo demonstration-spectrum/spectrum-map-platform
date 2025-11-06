@@ -823,11 +823,13 @@ const onDragStart = (layer: Layer, group?: LayerGroup) => {
   draggingFromGroupId.value = group ? group.id : null
 }
 const onDragEnd = () => {
+  console.log('Drag end', draggingLayerId.value);
   draggingLayerId.value = null
   draggingFromGroupId.value = null
 }
 
 const onDropOnGroup = (group: LayerGroup) => {
+  console.log('Drop on group', group.id);
   if (!draggingLayerId.value) return
   // Remove from previous place
   if (draggingFromGroupId.value) {

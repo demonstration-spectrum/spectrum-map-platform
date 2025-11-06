@@ -36,6 +36,7 @@ export class LayerGroupsService {
   }
 
   async update(mapId: string, id: string, dto: UpdateLayerGroupDto, userId: string) {
+    console.log('Updating layer group:', { mapId, id, dto, userId });
     await this.ensureMapUpdateAccess(mapId, userId);
     const group = await this.prisma.layerGroup.findUnique({ where: { id } });
     if (!group || group.mapId !== mapId) throw new NotFoundException('Layer group not found');

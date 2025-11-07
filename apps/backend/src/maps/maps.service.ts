@@ -184,7 +184,7 @@ export class MapsService {
               },
             },
           },
-          orderBy: { order: 'asc' },
+          // Ordering migrated to Map.rootOrder / LayerGroup.layerOrder
         },
       },
     });
@@ -218,7 +218,7 @@ export class MapsService {
     }
 
     // Check if user has permission to update this map
-    const hasPermission = await this.hasMapUpdatePermission(userId, map);
+    const hasPermission = await this.prisma.hasMapWriteAccess(userId, id);
     if (!hasPermission) {
       throw new ForbiddenException('Insufficient permissions to update this map');
     }
@@ -257,7 +257,7 @@ export class MapsService {
   async remove(id: string, userId: string) {
     const map = await this.prisma.map.findUnique({
       where: { id },
-      include: { layers: true },
+    include: { layers: true },
     });
 
     if (!map) {
@@ -265,7 +265,7 @@ export class MapsService {
     }
 
     // Check if user has permission to delete this map
-    const hasPermission = await this.hasMapUpdatePermission(userId, map);
+    const hasPermission = await this.prisma.hasMapWriteAccess(userId, id);
     if (!hasPermission) {
       throw new ForbiddenException('Insufficient permissions to delete this map');
     }
@@ -358,7 +358,7 @@ export class MapsService {
               },
             },
           },
-          orderBy: { order: 'asc' },
+          // Ordering migrated to Map.rootOrder / LayerGroup.layerOrder
         },
       },
     });
@@ -415,23 +415,5 @@ export class MapsService {
     return false;
   }
 
-  private async hasMapUpdatePermission(userId: string, map: any): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) return false;
-
-  // Super admin and staff can update all maps
-  if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.STAFF) return true;
-
-    // Only corp admins and editors from the same corporation can update
-    const allowedRoles: UserRole[] = [UserRole.CORP_ADMIN, UserRole.EDITOR];
-    if (user.corporationId === map.corporationId && 
-        allowedRoles.includes(user.role)) {
-      return true;
-    }
-
-    return false;
-  }
+  // hasMapUpdatePermission removed - use PrismaService.hasMapWriteAccess
 }

@@ -626,7 +626,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMapsStore } from '@/stores/maps'
 import { useLayersStore } from '@/stores/layers'
@@ -645,9 +645,11 @@ const groupsStore = useLayerGroupsStore()
 
 const mapContainer = ref<HTMLElement>()
 const map = ref<Map | null>(null)
-const layers = ref<Layer[]>([])
 const currentLayer = ref<Layer | null>(null)
 const availableDatasets = ref<Dataset[]>([])
+
+// Derived reactive: layers (must exist before passing into useMap)
+const layers = computed(() => layersStore.layers)
 
 // Use the shared composable for map behavior
 const { mapboxMap, selectedFeature, popupRef, initializeMap } = useMap(mapContainer, map, layers)
@@ -686,10 +688,49 @@ const useRawJson = ref(false)
 const rawJson = ref('')
 const geoserverBaseUrl = (import.meta.env.VITE_GEOSERVER_URL || '').replace(/\/$/, '')
 
-// ----- Grouping and ordering state -----
+// ----- Grouping and ordering state (derived from Pinia stores) -----
 type LayerGroup = { id: string; name: string; isCollapsed: boolean; isVisible: boolean; layerIds: string[] }
-// derive local presentation structure from backend groups + layers
-const layerGroups = ref<LayerGroup[]>([])
+// Use Pinia stores as source-of-truth
+const layerGroups = computed<LayerGroup[]>(() => {
+  const byGroup: Record<string, string[]> = {}
+  const allLayers = layersStore.layers
+  allLayers.forEach(l => {
+    const gid = (l as any).groupId as string | null | undefined
+    if (gid) {
+      if (!byGroup[gid]) byGroup[gid] = []
+      byGroup[gid].push(l.id)
+    }
+  })
+  return groupsStore.groups.map(g => {
+    const ids = byGroup[g.id] || []
+    // Prefer server-provided explicit ordering on the group when available (top-first).
+    const explicit = (g as any).layerOrder as string[] | undefined
+    let layerIds: string[]
+    if (explicit && explicit.length) {
+      // Keep only ids that currently belong to this group, in explicit order.
+      const ordered = explicit.filter(id => ids.includes(id))
+      const missing = ids.filter(id => !ordered.includes(id))
+      // Place missing (new) items above the explicit list so they appear at the top in the UI.
+      layerIds = [...missing, ...ordered]
+    } else {
+      // Fallback to per-layer numeric order if present (higher = on top)
+      layerIds = [...ids].sort((a, b) => {
+        const la = allLayers.find(x => x.id === a)
+        const lb = allLayers.find(x => x.id === b)
+        return (lb?.order || 0) - (la?.order || 0)
+      })
+    }
+
+    return {
+      id: g.id,
+      name: g.name,
+      isCollapsed: g.isCollapsed,
+      isVisible: g.isVisible,
+      layerIds
+    }
+  })
+})
+
 const renamingGroupId = ref<string | null>(null)
 const renamingLayerId = ref<string | null>(null)
 const renameText = ref('')
@@ -712,48 +753,11 @@ const layersInGroup = (group: LayerGroup) => {
   return group.layerIds.map(id => byId[id]).filter(Boolean)
 }
 
-const syncGroupsFromStore = () => {
-  // Build presentation: each backend group, and compute layerIds by membership (sorted top-first using layer.order desc)
-  if (!map.value) return
-  const byGroup: Record<string, string[]> = {}
-  const ungrouped: string[] = []
-  layers.value.forEach(l => {
-    if (l as any && (l as any).groupId) {
-      const gid = (l as any).groupId as string
-      if (!byGroup[gid]) byGroup[gid] = []
-      byGroup[gid].push(l.id)
-    } else {
-      ungrouped.push(l.id)
-    }
-  })
-  const groups = groupsStore.groups
-  layerGroups.value = groups.map(g => ({ id: g.id, name: g.name, isCollapsed: g.isCollapsed, isVisible: g.isVisible, layerIds: (byGroup[g.id] || []).sort((a, b) => ((layers.value.find(l => l.id === b)?.order || 0) - (layers.value.find(l => l.id === a)?.order || 0))) }))
-  // ungrouped handled via computed ungroupedLayers (from orders)
-}
+// sync/reconcile logic handled by computed stores: layerGroups and layers are derived from Pinia stores
 
-const reconcileGroupsWithLayers = () => {
-  // Remove ids for layers that no longer exist; preserve group order
-  const presentIds = new Set(layers.value.map(l => l.id))
-  layerGroups.value.forEach(g => {
-    g.layerIds = g.layerIds.filter(id => presentIds.has(id))
-  })
-  // No duplicates across groups
-  const seen = new Set<string>()
-  layerGroups.value.forEach(g => {
-    g.layerIds = g.layerIds.filter(id => {
-      if (seen.has(id)) return false
-      seen.add(id)
-      return true
-    })
-  })
-  // Any layer not in any group stays ungrouped (handled by computed)
-  // backend stored; no-op here
-}
-
-const createGroup = () => {
-  const id = `grp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+const createGroup = async () => {
   if (!map.value) return
-  groupsStore.createGroup(map.value.id, 'New Group').then(() => syncGroupsFromStore())
+  await groupsStore.createGroup(map.value.id, 'New Group')
 }
 
 const startRename = (layer: Layer) => {
@@ -780,23 +784,31 @@ const startRenameGroup = (group: LayerGroup) => {
   renameText.value = group.name
 }
 
-const commitRenameGroup = (group: LayerGroup) => {
+const commitRenameGroup = async (group: LayerGroup) => {
   const text = renameText.value.trim()
   renamingGroupId.value = null
   if (!text || text === group.name) return
   if (!map.value) return
-  groupsStore.updateGroup(map.value.id, group.id, { name: text }).then(() => syncGroupsFromStore())
+  try {
+    await groupsStore.updateGroup(map.value.id, group.id, { name: text })
+  } catch (e) {
+    console.error('Failed to rename group', e)
+  }
 }
 
-const toggleGroupCollapse = (group: LayerGroup) => {
-  group.isCollapsed = !group.isCollapsed
-  if (map.value) groupsStore.updateGroup(map.value.id, group.id, { isCollapsed: group.isCollapsed }).catch(() => {})
+const toggleGroupCollapse = async (group: LayerGroup) => {
+  if (!map.value) return
+  try {
+    await groupsStore.updateGroup(map.value.id, group.id, { isCollapsed: !group.isCollapsed })
+  } catch (e) {
+    console.warn('Failed to toggle collapse', e)
+  }
 }
 
-const deleteGroup = (group: LayerGroup) => {
+const deleteGroup = async (group: LayerGroup) => {
   if (!confirm(`Delete group "${group.name}"? Layers will remain ungrouped.`)) return
   if (!map.value) return
-  groupsStore.deleteGroup(map.value.id, group.id).then(() => syncGroupsFromStore())
+  await groupsStore.deleteGroup(map.value.id, group.id)
 }
 
 const toggleGroupVisibility = async (group: LayerGroup | null) => {
@@ -831,33 +843,43 @@ const onDragEnd = () => {
 const onDropOnGroup = (group: LayerGroup) => {
   console.log('Drop on group', group.id);
   if (!draggingLayerId.value) return
+  // Build a mutable copy of current groups
+  const current = layerGroups.value.map(g => ({ ...g, layerIds: [...g.layerIds] }))
   // Remove from previous place
   if (draggingFromGroupId.value) {
-    const from = layerGroups.value.find(g => g.id === draggingFromGroupId.value)
+    const from = current.find(g => g.id === draggingFromGroupId.value)
     if (from) from.layerIds = from.layerIds.filter(id => id !== draggingLayerId.value)
   }
   // Ensure not present in any other group
-  layerGroups.value.forEach(g => { if (g.id !== group.id) g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value) })
+  current.forEach(g => { if (g.id !== group.id) g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value) })
   // Add to target group at top (UI top)
-  group.layerIds = [draggingLayerId.value, ...group.layerIds]
-  applyReorderFlattened()
+  const target = current.find(g => g.id === group.id)
+  if (target) target.layerIds = [draggingLayerId.value, ...target.layerIds]
+  applyReorderFlattened(current)
 }
 
 const onDropUngrouped = () => {
   if (!draggingLayerId.value) return
+  const current = layerGroups.value.map(g => ({ ...g, layerIds: [...g.layerIds] }))
   // Remove from any group
-  layerGroups.value.forEach(g => g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value))
-  applyReorderFlattened()
+  current.forEach(g => g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value))
+  applyReorderFlattened(current)
 }
 
-const applyReorderFlattened = async () => {
+const applyReorderFlattened = async (modifiedGroups?: LayerGroup[]) => {
   if (!map.value) return
+  const groupsToUse = modifiedGroups ?? layerGroups.value
   // Build a top-to-bottom flattened list: ungrouped on top in current UI order, then each group in current UI order
   const topToBottom: string[] = []
+  // compute grouped ids from provided groups
+  const groupedIds = new Set<string>(groupsToUse.flatMap(g => g.layerIds))
   // ungrouped first (UI already top-first by order desc)
-  topToBottom.push(...ungroupedLayers.value.map(l => l.id))
+  topToBottom.push(...[...layers.value]
+    .filter(l => !groupedIds.has(l.id))
+    .sort((a, b) => (b.order || 0) - (a.order || 0))
+    .map(l => l.id))
   // then groups in their current order, each with their ids as-is (top-first)
-  layerGroups.value.forEach(g => topToBottom.push(...g.layerIds))
+  groupsToUse.forEach(g => topToBottom.push(...g.layerIds))
 
   // Backend expects array in display order; store.reorderLayers will overwrite local orders
   // Persist grouping + ordering to backend
@@ -1105,7 +1127,6 @@ const loadMap = async () => {
 const loadLayers = async () => {
   try {
     await layersStore.fetchLayers(route.params.id as string)
-    layers.value = layersStore.layers
   } catch (error) {
     console.error('Failed to load layers:', error)
   }
@@ -1438,9 +1459,8 @@ const removeLayer = async (layer: Layer) => {
     if (mapboxMap.value) {
       removeLayerFromMap(mapboxMap.value, `layer-${layer.id}`, `source-${layer.id}`)
     }
-    // Remove from any groups
-    layerGroups.value.forEach(g => g.layerIds = g.layerIds.filter(id => id !== layer.id))
-    applyReorderFlattened()
+  // Groups are derived from stores; just persist the current ordering to backend
+  applyReorderFlattened()
   } catch (error) {
     console.error('Failed to remove layer:', error)
   }
@@ -1508,7 +1528,6 @@ onMounted(async () => {
   }
   if (map.value) {
     await groupsStore.fetchGroups(map.value.id)
-    syncGroupsFromStore()
   }
 })
 
@@ -1519,8 +1538,5 @@ onUnmounted(() => {
 })
 
 // Watch for layer changes
-watch(() => layersStore.layers, (newLayers) => {
-  layers.value = newLayers
-  syncGroupsFromStore()
-}, { deep: true })
+// layers are derived from the layers store via computed(); no local sync needed
 </script>

@@ -25,7 +25,7 @@ export class CreateLayerDto {
   })
   @IsOptional()
   @IsNumber()
-  order?: number;
+  // order removed - map and group ordering is stored on Map.rootOrder and LayerGroup.layerOrder
 
   @ApiProperty({
     description: 'Whether the layer is visible',

@@ -13,7 +13,6 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { LayersService } from './layers.service';
 import { CreateLayerDto } from './dto/create-layer.dto';
 import { UpdateLayerDto } from './dto/update-layer.dto';
-import { ReorderLayersDto } from './dto/reorder-layers.dto';
 import { SetLayerGroupingDto } from './dto/set-layer-grouping.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
@@ -101,18 +100,7 @@ export class LayersController {
     return this.layersService.toggleVisibility(id, req.user.id);
   }
 
-  @Patch('reorder')
-  @ApiOperation({ summary: 'Reorder layers in a map' })
-  @ApiResponse({ status: 200, description: 'Layers reordered successfully' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  @ApiResponse({ status: 400, description: 'Invalid layer order' })
-  async reorderLayers(
-    @Param('mapId') mapId: string,
-    @Body() reorderLayersDto: ReorderLayersDto,
-    @Request() req,
-  ) {
-    return this.layersService.reorderLayers(mapId, reorderLayersDto, req.user.id);
-  }
+  
 
 
 }

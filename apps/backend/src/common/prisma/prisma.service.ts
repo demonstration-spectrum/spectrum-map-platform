@@ -84,4 +84,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
     return corporationIds;
   }
+
+  // Helper method to check if a user has write/update access to a map
+  async hasMapWriteAccess(userId: string, mapId: string): Promise<boolean> {
+    const user = await this.user.findUnique({ where: { id: userId } });
+    if (!user) return false;
+
+    // Super admin and staff can update all maps
+    if (user.role === 'SUPER_ADMIN' || user.role === 'STAFF') return true;
+
+    const map = await this.map.findUnique({ where: { id: mapId }, select: { corporationId: true } });
+    if (!map) return false;
+
+    // Only corp admins and editors from the same corporation can update
+    const allowedRoles: string[] = ['CORP_ADMIN', 'EDITOR'];
+    if (user.corporationId === map.corporationId && allowedRoles.includes(user.role)) {
+      return true;
+    }
+
+    return false;
+  }
 }

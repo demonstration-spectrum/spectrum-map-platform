@@ -16,11 +16,6 @@ export class UpdateLayerGroupDto extends PartialType(CreateLayerGroupDto) {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsInt()
-  order?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
   @IsString()
   name?: string;
 }

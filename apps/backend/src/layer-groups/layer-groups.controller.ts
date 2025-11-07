@@ -26,7 +26,7 @@ export class LayerGroupsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a layer group (rename, collapsed, visible, order)' })
+  @ApiOperation({ summary: 'Update a layer group (rename, collapsed, visible)' })
   async update(@Param('mapId') mapId: string, @Param('id') id: string, @Body() dto: UpdateLayerGroupDto, @Request() req) {
     return this.service.update(mapId, id, dto, req.user.id)
   }

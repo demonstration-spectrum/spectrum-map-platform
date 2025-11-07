@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Layer, CreateLayerRequest, ReorderLayersRequest } from '@/types'
+import type { Layer, CreateLayerRequest } from '@/types'
 import { api } from '@/utils/api'
 
 export const useLayersStore = defineStore('layers', () => {
@@ -115,25 +115,7 @@ export const useLayersStore = defineStore('layers', () => {
     }
   }
 
-  const reorderLayers = async (mapId: string, reorderData: ReorderLayersRequest) => {
-    isLoading.value = true
-    try {
-      await api.patch(`/maps/${mapId}/layers/reorder`, reorderData)
-      
-      // Update local state
-      const reorderedLayers = reorderData.layerIds.map((id, index) => {
-        const layer = layers.value.find(l => l.id === id)
-        return layer ? { ...layer, order: index + 1 } : null
-      }).filter(Boolean) as Layer[]
-      
-      layers.value = reorderedLayers
-    } catch (error) {
-      console.error('Failed to reorder layers:', error)
-      throw error
-    } finally {
-      isLoading.value = false
-    }
-  }
+  // reorderLayers removed - ordering is handled by Map.rootOrder and LayerGroup.layerOrder
 
   const setCurrentLayer = (layer: Layer | null) => {
     currentLayer.value = layer
@@ -154,7 +136,7 @@ export const useLayersStore = defineStore('layers', () => {
     updateLayer,
     removeLayer,
     toggleLayerVisibility,
-    reorderLayers,
+    
     setCurrentLayer,
     clearLayers
   }

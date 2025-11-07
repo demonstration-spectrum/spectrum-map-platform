@@ -1,14 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/utils/api'
+import { useLayersStore } from './layers'
 
 export interface LayerGroupDTO {
   id: string
   mapId: string
   name: string
-  order: number
   isCollapsed: boolean
   isVisible: boolean
+  // Optional explicit layer ordering on the group (top-first in UI). Newer schema stores this on the group.
+  layerOrder?: string[]
 }
 
 export interface LayerGroupingItem {
@@ -34,8 +36,6 @@ export const useLayerGroupsStore = defineStore('layerGroups', () => {
   const createGroup = async (mapId: string, name: string) => {
     const res = await api.post(`/maps/${mapId}/layer-groups`, { name })
     groups.value.push(res.data)
-    // maintain ascending order by order property
-    groups.value.sort((a, b) => a.order - b.order)
     return res.data as LayerGroupDTO
   }
 
@@ -43,7 +43,6 @@ export const useLayerGroupsStore = defineStore('layerGroups', () => {
     const res = await api.patch(`/maps/${mapId}/layer-groups/${id}`, patch)
     const idx = groups.value.findIndex(g => g.id === id)
     if (idx !== -1) groups.value[idx] = res.data
-    groups.value.sort((a, b) => a.order - b.order)
     return res.data as LayerGroupDTO
   }
 
@@ -52,8 +51,20 @@ export const useLayerGroupsStore = defineStore('layerGroups', () => {
     groups.value = groups.value.filter(g => g.id !== id)
   }
 
+  // Persist grouping + ordering. The frontend builds a flattened items[] (layerId, groupId?, order)
+  // On success update local store state for layers (groupId) so components using stores reflect changes.
   const setGrouping = async (mapId: string, items: LayerGroupingItem[]) => {
+    const layersStore = useLayersStore()
+    // Call backend to persist whole-state
     await api.patch(`/maps/${mapId}/layers/grouping`, { items })
+
+    // Update local layers store to reflect new group assignment
+    const itemsById = new Map(items.map(i => [i.layerId, i]))
+    layersStore.layers = layersStore.layers.map(l => {
+      const it = itemsById.get(l.id)
+      if (!it) return l
+      return { ...l, groupId: it.groupId ?? null }
+    })
   }
 
   const clear = () => {

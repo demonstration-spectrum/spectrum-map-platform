@@ -179,6 +179,9 @@ model Map {
   bearing       Float?
   pitch         Float?
 
+  // Add this to store the order of root layers and groups
+  rootOrder     String[]  @default([])
+
   // Relationships
   corporation Corporation @relation(fields: [corporationId], references: [id], onDelete: Cascade)
   createdBy   User        @relation(fields: [createdById], references: [id])
@@ -194,7 +197,7 @@ model Layer {
   mapId     String
   datasetId String
   name      String   // Layer name (can be different from dataset name)
-  order     Int      // Layer order in the map
+  // order removed - use Map.rootOrder and LayerGroup.layerOrder for ordering
   isVisible Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -217,16 +220,16 @@ model LayerGroup {
   id          String   @id @default(cuid())
   mapId       String
   name        String
-  order       Int
   isCollapsed Boolean  @default(false)
   isVisible   Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Add this to store the order of layers *within* this group
+  layerOrder  String[]  @default([])
+
   map    Map    @relation(fields: [mapId], references: [id], onDelete: Cascade)
   layers Layer[]
-
-  @@unique([mapId, order])
   @@map("layer_groups")
 }
 

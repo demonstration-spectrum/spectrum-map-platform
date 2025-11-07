@@ -10,29 +10,28 @@ export class LayerGroupsService {
   private async ensureMapUpdateAccess(mapId: string, userId: string) {
     const map = await this.prisma.map.findUnique({ where: { id: mapId } });
     if (!map) throw new NotFoundException('Map not found');
-    // reuse prisma helper from layers.service implicitly by checking roles
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new ForbiddenException('Access denied');
-    if (
-      user.role === 'SUPER_ADMIN' ||
-      user.role === 'STAFF' ||
-      (user.corporationId === map.corporationId && (user.role === 'CORP_ADMIN' || user.role === 'EDITOR'))
-    ) {
-      return map;
-    }
-    throw new ForbiddenException('Insufficient permissions');
+
+    const hasAccess = await this.prisma.hasMapWriteAccess(userId, mapId);
+    if (!hasAccess) throw new ForbiddenException('Insufficient permissions');
+    return map;
   }
 
   async list(mapId: string, userId: string) {
     await this.ensureMapUpdateAccess(mapId, userId);
-    return this.prisma.layerGroup.findMany({ where: { mapId }, orderBy: { order: 'asc' } });
+    return this.prisma.layerGroup.findMany({ where: { mapId } });
   }
 
   async create(mapId: string, dto: CreateLayerGroupDto, userId: string) {
-    await this.ensureMapUpdateAccess(mapId, userId);
-    const maxOrder = await this.prisma.layerGroup.aggregate({ where: { mapId }, _max: { order: true } });
-    const order = (maxOrder._max.order || 0) + 1;
-    return this.prisma.layerGroup.create({ data: { mapId, name: dto.name, order } });
+    const map = await this.ensureMapUpdateAccess(mapId, userId);
+    const group = await this.prisma.layerGroup.create({ data: { mapId, name: dto.name } });
+
+    // Add the new group to the map's rootOrder
+    await this.prisma.map.update({
+      where: { id: mapId },
+      data: { rootOrder: { push: group.id } },
+    });
+
+    return group;
   }
 
   async update(mapId: string, id: string, dto: UpdateLayerGroupDto, userId: string) {
@@ -45,9 +44,16 @@ export class LayerGroupsService {
   }
 
   async remove(mapId: string, id: string, userId: string) {
-    await this.ensureMapUpdateAccess(mapId, userId);
+    const map = await this.ensureMapUpdateAccess(mapId, userId);
     const group = await this.prisma.layerGroup.findUnique({ where: { id } });
     if (!group || group.mapId !== mapId) throw new NotFoundException('Layer group not found');
+
+    // Remove the group from the map's rootOrder
+    const newRootOrder = map.rootOrder.filter((itemId) => itemId !== id);
+    await this.prisma.map.update({
+      where: { id: mapId },
+      data: { rootOrder: newRootOrder },
+    });
 
     // Set layers groupId to null before deleting
     await this.prisma.layer.updateMany({ where: { groupId: id }, data: { groupId: null } });

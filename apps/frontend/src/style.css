@@ -76,3 +76,9 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-400;
 }
+
+@layer utilities {
+  .drop-target-active {
+    @apply bg-blue-50 ring-2 ring-blue-500 ring-inset;
+  }
+}

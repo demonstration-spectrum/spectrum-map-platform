@@ -28,9 +28,16 @@
           <div class="space-y-3">
             <!-- Ungrouped Header if groups exist -->
             <template v-if="layerGroups.length">
-              <div class="flex items-center justify-between text-xs text-gray-500 px-2">
-                <div class="font-semibold">Ungrouped</div>
-                <div class="flex items-center gap-2">
+                <div 
+                  class="flex items-center justify-between text-xs text-gray-500 px-2"
+                  @dragover.prevent
+                  @drop.prevent="onDropUngrouped"
+                  @dragenter="onDragEnterList('ungrouped-header', null)"
+                  @dragleave="onDragLeaveList('ungrouped-header', null)"
+                  :class="{ 'drop-target-active': dragOverTarget?.type === 'ungrouped-header' }"
+                >
+                  <div class="font-semibold">Ungrouped</div>
+                  <div class="flex items-center gap-2">
                   <button @click="toggleGroupVisibility(null)" class="p-1 text-gray-400 hover:text-gray-600" :title="ungroupedAllVisible ? 'Hide all' : 'Show all'">
                     <svg v-if="ungroupedAllVisible" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
                     <svg v-else class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clip-rule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
@@ -40,7 +47,14 @@
             </template>
 
             <!-- Ungrouped Layers List -->
-            <div class="space-y-2" @dragover.prevent @drop.prevent="onDropUngrouped">
+            <div 
+              class="space-y-2" 
+              @dragover.prevent 
+              @drop.prevent="onDropUngrouped"
+              @dragenter="onDragEnterList('ungrouped', null)"
+              @dragleave="onDragLeaveList('ungrouped', null)"
+              :class="{ 'drop-target-active': dragOverTarget?.type === 'ungrouped' }"
+            >
               <div
                 v-for="layer in ungroupedLayers"
                 :key="layer.id"
@@ -105,7 +119,17 @@
 
             <!-- Groups -->
             <div v-for="group in layerGroups" :key="group.id" class="border border-gray-200 rounded">
-              <div class="flex items-center justify-between px-2 py-1 bg-gray-50 border-b">
+              <div
+                class="flex items-center justify-between px-2 py-1 bg-gray-50 border-b"
+                draggable="true"
+                @dragstart="onDragStartGroup(group)"
+                @dragend="onDragEndGroup"
+                @dragover.prevent
+                @drop.prevent="onDropOnGroup(group)"
+                @dragenter="onDragEnterList('group-header', group.id)"
+                @dragleave="onDragLeaveList('group-header', group.id)"
+                :class="{ 'drop-target-active': dragOverTarget?.type === 'group-header' && dragOverTarget.id === group.id }"
+              >
                 <div class="flex items-center gap-2 min-w-0">
                   <button @click="toggleGroupCollapse(group)" class="p-1 text-gray-500 hover:text-gray-700" :title="group.isCollapsed ? 'Expand' : 'Collapse'">
                     <svg v-if="group.isCollapsed" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -133,7 +157,14 @@
                   </button>
                 </div>
               </div>
-              <div v-show="!group.isCollapsed" class="p-2 space-y-2" @dragover.prevent @drop.prevent="onDropOnGroup(group)">
+              <div v-show="!group.isCollapsed" 
+                class="p-2 space-y-2" 
+                @dragover.prevent 
+                @drop.prevent="onDropOnGroup(group)"
+                @dragenter="onDragEnterList('group', group.id)"
+                @dragleave="onDragLeaveList('group', group.id)"
+                :class="{ 'drop-target-active': dragOverTarget?.type === 'group' && dragOverTarget.id === group.id }"
+              >
                 <div
                   v-for="layer in layersInGroup(group)"
                   :key="layer.id"
@@ -736,6 +767,8 @@ const renamingLayerId = ref<string | null>(null)
 const renameText = ref('')
 const draggingLayerId = ref<string | null>(null)
 const draggingFromGroupId = ref<string | null>(null) // null => ungrouped
+const draggingGroup = ref<LayerGroup | null>(null)
+const dragOverTarget = ref<{ type: string, id: string | null } | null>(null)
 
 const ungroupedLayers = computed(() => {
   const groupedIds = new Set<string>(layerGroups.value.flatMap(g => g.layerIds))
@@ -833,37 +866,114 @@ const toggleGroupVisibility = async (group: LayerGroup | null) => {
 const onDragStart = (layer: Layer, group?: LayerGroup) => {
   draggingLayerId.value = layer.id
   draggingFromGroupId.value = group ? group.id : null
+  draggingGroup.value = null // ensure group-drag state is cleared
 }
 const onDragEnd = () => {
   console.log('Drag end', draggingLayerId.value);
   draggingLayerId.value = null
   draggingFromGroupId.value = null
+  dragOverTarget.value = null // clear any highlight
+}
+
+// Group drag handlers
+const onDragStartGroup = (group: LayerGroup) => {
+  draggingLayerId.value = null
+  draggingFromGroupId.value = null
+  draggingGroup.value = group
+}
+
+const onDragEndGroup = () => {
+  draggingGroup.value = null
+  dragOverTarget.value = null
+}
+
+const onDragEnterList = (type: string, id: string | null) => {
+  // Don't highlight if dragging over self (group-header)
+  if (draggingGroup.value && type === 'group-header' && draggingGroup.value.id === id) {
+    dragOverTarget.value = null;
+    return;
+  }
+  // Don't highlight if dragging layer over its own group (group)
+  if (draggingLayerId.value && type === 'group' && draggingFromGroupId.value === id) {
+     dragOverTarget.value = null;
+     return;
+  }
+  // Don't highlight if dragging ungrouped layer over ungrouped list
+  if (draggingLayerId.value && type === 'ungrouped' && draggingFromGroupId.value === null) {
+    dragOverTarget.value = null;
+    return;
+  }
+  dragOverTarget.value = { type, id };
+}
+
+const onDragLeaveList = (type: string, id: string | null) => {
+  if (dragOverTarget.value && dragOverTarget.value.type === type && dragOverTarget.value.id === id) {
+    dragOverTarget.value = null;
+  }
 }
 
 const onDropOnGroup = (group: LayerGroup) => {
   console.log('Drop on group', group.id);
-  if (!draggingLayerId.value) return
-  // Build a mutable copy of current groups
-  const current = layerGroups.value.map(g => ({ ...g, layerIds: [...g.layerIds] }))
-  // Remove from previous place
-  if (draggingFromGroupId.value) {
-    const from = current.find(g => g.id === draggingFromGroupId.value)
-    if (from) from.layerIds = from.layerIds.filter(id => id !== draggingLayerId.value)
+  // Handle dropping a LAYER onto a group's content area or header
+  if (draggingLayerId.value) {
+    if (!draggingLayerId.value) return
+    // Build a mutable copy of current groups
+    const current = layerGroups.value.map(g => ({ ...g, layerIds: [...g.layerIds] }))
+    // Remove from previous place
+    if (draggingFromGroupId.value) {
+      const from = current.find(g => g.id === draggingFromGroupId.value)
+      if (from) from.layerIds = from.layerIds.filter(id => id !== draggingLayerId.value)
+    }
+    // Ensure not present in any other group
+    current.forEach(g => { if (g.id !== group.id) g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value) })
+    // Add to target group at top (UI top)
+    const target = current.find(g => g.id === group.id)
+    if (target) target.layerIds = [draggingLayerId.value, ...target.layerIds]
+    applyReorderFlattened(current)
+
+  } else if (draggingGroup.value) {
+    // Handle dropping a GROUP onto another group (reordering groups)
+    console.log('Drop group', draggingGroup.value.id, 'on group', group.id);
+    if (draggingGroup.value.id === group.id) return; // cannot drop on self
+
+    const currentGroups = [...layerGroups.value];
+    const fromIndex = currentGroups.findIndex(g => g.id === draggingGroup.value!.id);
+    const toIndex = currentGroups.findIndex(g => g.id === group.id);
+
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    // Remove from old position
+    const [movedGroup] = currentGroups.splice(fromIndex, 1);
+    // Insert at new position (before the target group)
+    currentGroups.splice(toIndex, 0, movedGroup);
+    
+    applyReorderFlattened(currentGroups); // Pass the modified group list
   }
-  // Ensure not present in any other group
-  current.forEach(g => { if (g.id !== group.id) g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value) })
-  // Add to target group at top (UI top)
-  const target = current.find(g => g.id === group.id)
-  if (target) target.layerIds = [draggingLayerId.value, ...target.layerIds]
-  applyReorderFlattened(current)
 }
 
 const onDropUngrouped = () => {
-  if (!draggingLayerId.value) return
-  const current = layerGroups.value.map(g => ({ ...g, layerIds: [...g.layerIds] }))
-  // Remove from any group
-  current.forEach(g => g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value))
-  applyReorderFlattened(current)
+  // Handle dropping a LAYER
+  if (draggingLayerId.value) {
+    if (!draggingLayerId.value) return
+    const current = layerGroups.value.map(g => ({ ...g, layerIds: [...g.layerIds] }))
+    // Remove from any group
+    current.forEach(g => g.layerIds = g.layerIds.filter(id => id !== draggingLayerId.value))
+    applyReorderFlattened(current)
+
+  } else if (draggingGroup.value) {
+    // Handle dropping a GROUP (move to top of group list)
+    console.log('Drop group', draggingGroup.value.id, 'on ungrouped');
+    
+    const currentGroups = [...layerGroups.value];
+    const fromIndex = currentGroups.findIndex(g => g.id === draggingGroup.value!.id);
+    if (fromIndex === -1) return;
+
+    // Move to top
+    const [movedGroup] = currentGroups.splice(fromIndex, 1);
+    currentGroups.unshift(movedGroup); // Add to start of group list
+
+    applyReorderFlattened(currentGroups);
+  }
 }
 
 const applyReorderFlattened = async (modifiedGroups?: LayerGroup[]) => {
@@ -908,6 +1018,16 @@ const applyReorderFlattened = async (modifiedGroups?: LayerGroup[]) => {
       groupOrders,
       layerGroupIdMap,
     })
+    // Re-fetch stores so local Pinia state stays in sync with backend
+    try {
+      if (map.value) {
+        await layersStore.fetchLayers(map.value.id)
+        await groupsStore.fetchGroups(map.value.id)
+      }
+    } catch (e) {
+      // Non-fatal: log and continue
+      console.warn('Failed to refresh layers/groups after reorder', e)
+    }
   } catch (e) {
     console.error('Failed to persist map structure', e)
   }

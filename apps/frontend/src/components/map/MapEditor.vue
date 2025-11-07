@@ -884,28 +884,32 @@ const applyReorderFlattened = async (modifiedGroups?: LayerGroup[]) => {
   // Backend expects array in display order; store.reorderLayers will overwrite local orders
   // Persist grouping + ordering to backend
   try {
-    const items: { layerId: string; groupId?: string | null; order: number }[] = []
-    // Build orders (bottom-to-top ascending order index)
-    // We want backend order starting at 1 for bottom-most; bottomToTop already prepared below
-    // Use the bottomToTop reversed index to assign ascending order
-    const assignOrders = () => {
-      // from presentation: ungrouped first (topToBottom already in top-first), then groups in UI order
-      // Convert to bottom-first
-      const bottomFirst = [...topToBottom].reverse()
-      bottomFirst.forEach((id, idx) => {
-        const layer = layers.value.find(l => l.id === id)
-        if (!layer) return
-        // Determine groupId from current presentation groups
-        let gid: string | null = null
-        const g = layerGroups.value.find(gr => gr.layerIds.includes(id))
-        gid = g ? g.id : null
-        items.push({ layerId: id, groupId: gid, order: idx + 1 })
-      })
+    // Build the rootOrder: ungrouped layers (top-to-bottom) followed by group ids in their current order
+    const groupedIds = new Set<string>(groupsToUse.flatMap(g => g.layerIds))
+    const ungroupedTopToBottom = [...layers.value]
+      .filter(l => !groupedIds.has(l.id))
+      .sort((a, b) => (b.order || 0) - (a.order || 0))
+      .map(l => l.id)
+
+    const rootOrder = [...ungroupedTopToBottom, ...groupsToUse.map(g => g.id)]
+
+    // Build groupOrders
+    const groupOrders = groupsToUse.map(g => ({ groupId: g.id, layerIds: g.layerIds }))
+
+    // Build layerGroupIdMap for all layers
+    const layerGroupIdMap: Record<string, string | null> = {}
+    for (const layer of layers.value) {
+      const found = groupsToUse.find(g => g.layerIds.includes(layer.id))
+      layerGroupIdMap[layer.id] = found ? found.id : null
     }
-    assignOrders()
-    await groupsStore.setGrouping(map.value.id, items)
+
+    await mapsStore.updateMapStructure(map.value.id, {
+      rootOrder,
+      groupOrders,
+      layerGroupIdMap,
+    })
   } catch (e) {
-    console.error('Failed to persist layer grouping', e)
+    console.error('Failed to persist map structure', e)
   }
 
   // Mapbox expects bottom-to-top ordering to move layers; reverse

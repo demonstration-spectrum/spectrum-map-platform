@@ -52,24 +52,11 @@ export const useLayerGroupsStore = defineStore('layerGroups', () => {
   }
 
   // Persist grouping + ordering. The frontend builds a flattened items[] (layerId, groupId?, order)
-  // On success update local store state for layers (groupId) so components using stores reflect changes.
-  const setGrouping = async (mapId: string, items: LayerGroupingItem[]) => {
-    const layersStore = useLayersStore()
-    // Call backend to persist whole-state
-    await api.patch(`/maps/${mapId}/layers/grouping`, { items })
-
-    // Update local layers store to reflect new group assignment
-    const itemsById = new Map(items.map(i => [i.layerId, i]))
-    layersStore.layers = layersStore.layers.map(l => {
-      const it = itemsById.get(l.id)
-      if (!it) return l
-      return { ...l, groupId: it.groupId ?? null }
-    })
-  }
+  // Grouping persistence moved to maps API; UI-level reconciliation continues via stores
 
   const clear = () => {
     groups.value = []
   }
 
-  return { groups, isLoading, fetchGroups, createGroup, updateGroup, deleteGroup, setGrouping, clear }
+  return { groups, isLoading, fetchGroups, createGroup, updateGroup, deleteGroup, clear }
 })

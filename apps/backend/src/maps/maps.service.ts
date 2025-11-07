@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, NotFoundException, BadRequestException 
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
+import { UpdateMapStructureDto } from './dto/update-map-structure.dto'; // new DTO
 import { UserRole, MapVisibility } from '@prisma/client';
 
 @Injectable()
@@ -416,4 +417,102 @@ export class MapsService {
   }
 
   // hasMapUpdatePermission removed - use PrismaService.hasMapWriteAccess
+
+
+  // New: updateMapStructure
+  async updateMapStructure(mapId: string, dto: UpdateMapStructureDto, userId: string) {
+    // 1. Check permissions
+    const hasPermission = await this.prisma.hasMapWriteAccess(userId, mapId);
+    if (!hasPermission) {
+      throw new ForbiddenException('Insufficient permissions to update this map');
+    }
+
+    // 2. Validate that IDs in the DTO belong to this map and that the payload is consistent
+    const map = await this.prisma.map.findUnique({
+      where: { id: mapId },
+      include: {
+        layers: { select: { id: true } },
+        layerGroups: { select: { id: true } },
+      },
+    });
+    if (!map) throw new NotFoundException('Map not found');
+
+    const mapLayerIds = new Set(map.layers.map(l => l.id));
+    const mapGroupIds = new Set(map.layerGroups.map(g => g.id));
+
+    // rootOrder items must be either a layer id or a group id
+    for (const id of dto.rootOrder || []) {
+      if (!mapLayerIds.has(id) && !mapGroupIds.has(id)) {
+        throw new BadRequestException(`Invalid rootOrder id: ${id}`);
+      }
+      // If rootOrder contains a layer id, that layer must be assigned to root (null group)
+      if (mapLayerIds.has(id)) {
+        const assignedGroup = dto.layerGroupIdMap ? dto.layerGroupIdMap[id] : undefined;
+        if (assignedGroup) {
+          throw new BadRequestException(`Layer ${id} included in rootOrder but assigned to group ${assignedGroup}`);
+        }
+      }
+    }
+
+    // Validate groupOrders: group exists and layers belong to map and match layerGroupIdMap
+    for (const groupOrder of dto.groupOrders || []) {
+      if (!mapGroupIds.has(groupOrder.groupId)) {
+        throw new BadRequestException(`Invalid group id in groupOrders: ${groupOrder.groupId}`);
+      }
+      for (const lid of groupOrder.layerIds || []) {
+        if (!mapLayerIds.has(lid)) {
+          throw new BadRequestException(`Invalid layer id in groupOrders for group ${groupOrder.groupId}: ${lid}`);
+        }
+        const assigned = dto.layerGroupIdMap ? dto.layerGroupIdMap[lid] : undefined;
+        if (assigned !== groupOrder.groupId) {
+          throw new BadRequestException(`Layer ${lid} listed in groupOrders for ${groupOrder.groupId} but layerGroupIdMap assigns to ${assigned}`);
+        }
+      }
+    }
+
+    // Validate layerGroupIdMap keys/values
+    for (const [lid, gid] of Object.entries(dto.layerGroupIdMap || {})) {
+      if (!mapLayerIds.has(lid)) {
+        throw new BadRequestException(`Invalid layer id in layerGroupIdMap: ${lid}`);
+      }
+      if (gid !== null && gid !== undefined && !mapGroupIds.has(gid)) {
+        throw new BadRequestException(`Invalid group id in layerGroupIdMap for layer ${lid}: ${gid}`);
+      }
+    }
+
+    const txOps: any[] = [];
+
+    // Update map rootOrder
+    txOps.push(
+      this.prisma.map.update({
+        where: { id: mapId },
+        data: { rootOrder: dto.rootOrder },
+      }),
+    );
+
+    // Update group layerOrder entries
+    for (const groupOrder of dto.groupOrders || []) {
+      txOps.push(
+        this.prisma.layerGroup.update({
+          where: { id: groupOrder.groupId },
+          data: { layerOrder: groupOrder.layerIds },
+        }),
+      );
+    }
+
+    // Update layer.groupId for each layer
+    for (const [layerId, groupId] of Object.entries(dto.layerGroupIdMap || {})) {
+      txOps.push(
+        this.prisma.layer.update({ where: { id: layerId }, data: { groupId: groupId ?? null } }),
+      );
+    }
+
+    try {
+      await this.prisma.$transaction(txOps);
+      return { message: 'Map structure updated successfully' };
+    } catch (error) {
+      console.error('Failed to update map structure:', error);
+      throw new BadRequestException('Failed to update map structure. Please check input data.');
+    }
+  }
 }

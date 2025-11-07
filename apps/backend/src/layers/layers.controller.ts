@@ -13,7 +13,6 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { LayersService } from './layers.service';
 import { CreateLayerDto } from './dto/create-layer.dto';
 import { UpdateLayerDto } from './dto/update-layer.dto';
-import { SetLayerGroupingDto } from './dto/set-layer-grouping.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('layers')
@@ -55,18 +54,7 @@ export class LayersController {
     return this.layersService.findOne(id, req.user.id);
   }
   
-  @Patch('grouping')
-  @ApiOperation({ summary: 'Set grouping and order for layers in a map' })
-  @ApiResponse({ status: 200, description: 'Layer grouping updated successfully' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  @ApiResponse({ status: 400, description: 'Invalid grouping data' })
-  async setGrouping(
-    @Param('mapId') mapId: string,
-    @Body() setLayerGroupingDto: SetLayerGroupingDto,
-    @Request() req,
-  ) {
-    return this.layersService.setGrouping(mapId, setLayerGroupingDto, req.user.id);
-  }
+  // Grouping endpoint moved to MapsController to accept explicit map structure payload
 
   @Patch('update/:id')
   @ApiOperation({ summary: 'Update layer' })

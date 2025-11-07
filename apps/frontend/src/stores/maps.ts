@@ -100,6 +100,18 @@ export const useMapsStore = defineStore('maps', () => {
     }
   }
 
+  const updateMapStructure = async (mapId: string, structure: { rootOrder: string[]; groupOrders: { groupId: string; layerIds: string[] }[]; layerGroupIdMap: Record<string, string | null> }) => {
+    isLoading.value = true
+    try {
+      await api.patch(`/maps/${mapId}/structure`, structure)
+    } catch (error) {
+      console.error('Failed to update map structure:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   const deleteMap = async (id: string) => {
     isLoading.value = true
     try {
@@ -131,6 +143,7 @@ export const useMapsStore = defineStore('maps', () => {
     createMap,
     updateMap,
     deleteMap,
-    setCurrentMap
+    setCurrentMap,
+    updateMapStructure
   }
 })

@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { MapsService } from './maps.service';
 import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
+import { UpdateMapStructureDto } from './dto/update-map-structure.dto'; // Import new DTO
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
 import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt.guard';
@@ -104,6 +105,18 @@ export class MapsController {
     @Request() req,
   ) {
     return this.mapsService.update(id, updateMapDto, req.user.id);
+  }
+
+  @Patch(':id/structure')
+  @ApiOperation({ summary: 'Update the layer and group order/structure of a map' })
+  @ApiResponse({ status: 200, description: 'Map structure updated' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async updateMapStructure(
+    @Param('id') id: string,
+    @Body() updateMapStructureDto: UpdateMapStructureDto,
+    @Request() req,
+  ) {
+    return this.mapsService.updateMapStructure(id, updateMapStructureDto, req.user.id);
   }
 
   @Delete(':id')

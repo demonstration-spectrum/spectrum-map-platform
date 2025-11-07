@@ -3,7 +3,6 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateLayerDto } from './dto/create-layer.dto';
 import { UpdateLayerDto } from './dto/update-layer.dto';
 import { UserRole } from '@prisma/client';
-import { SetLayerGroupingDto } from './dto/set-layer-grouping.dto';
 
 @Injectable()
 export class LayersService {
@@ -192,67 +191,7 @@ export class LayersService {
 
   // NOTE: reorderLayers removed. Ordering is handled by Map.rootOrder and LayerGroup.layerOrder.
 
-  async setGrouping(mapId: string, dto: SetLayerGroupingDto, userId: string) {
-    console.log('dto', dto);
-    // permission & map check
-    const map = await this.prisma.map.findUnique({ where: { id: mapId } });
-    if (!map) throw new NotFoundException('Map not found');
-    const has = await this.prisma.hasMapWriteAccess(userId, mapId);
-    if (!has) throw new ForbiddenException('Insufficient permissions to modify this map');
-
-    const layerIds = dto.items.map(i => i.layerId);
-    const layers = await this.prisma.layer.findMany({ where: { id: { in: layerIds }, mapId } });
-    if (layers.length !== layerIds.length) throw new BadRequestException('Some layers do not belong to this map');
-
-    // Validate groups referenced
-    const groupIds = Array.from(new Set(dto.items.map(i => i.groupId).filter((g): g is string => !!g)));
-    if (groupIds.length) {
-      const groups = await this.prisma.layerGroup.findMany({ where: { id: { in: groupIds }, mapId } });
-      if (groups.length !== groupIds.length) throw new BadRequestException('Invalid group references');
-    }
-
-    // Build ordering structures from dto.items
-    // dto.items.order is 1-based bottom-to-top. We want top-to-bottom ordering.
-    const itemsSortedTopToBottom = [...dto.items].sort((a, b) => b.order - a.order);
-
-    const rootOrder: string[] = [];
-    const seenGroups = new Set<string>();
-    const groupToLayerOrder: Record<string, string[]> = {};
-
-    for (const it of itemsSortedTopToBottom) {
-      if (!it.groupId) {
-        // ungrouped layer sits at root
-        rootOrder.push(it.layerId);
-      } else {
-        // grouped layer: ensure group appears in rootOrder once in the position of its first encountered child
-        if (!seenGroups.has(it.groupId)) {
-          rootOrder.push(it.groupId);
-          seenGroups.add(it.groupId);
-        }
-        if (!groupToLayerOrder[it.groupId]) groupToLayerOrder[it.groupId] = [];
-        groupToLayerOrder[it.groupId].push(it.layerId);
-      }
-    }
-
-    // Prepare DB updates: update map.rootOrder and each group's layerOrder, and set layer.groupId accordingly
-    const txOps: any[] = [];
-
-    txOps.push(this.prisma.map.update({ where: { id: mapId }, data: { rootOrder } }));
-
-    // Update groups' layerOrder
-    for (const gid of Object.keys(groupToLayerOrder)) {
-      txOps.push(this.prisma.layerGroup.update({ where: { id: gid }, data: { layerOrder: groupToLayerOrder[gid] } }));
-    }
-
-    // Update layers' groupId (set to null if not present)
-    for (const it of dto.items) {
-      txOps.push(this.prisma.layer.update({ where: { id: it.layerId }, data: { groupId: it.groupId ?? null } }));
-    }
-
-    await this.prisma.$transaction(txOps);
-
-    return { message: 'Layer grouping updated' };
-  }
+  // setGrouping removed: map/group ordering now handled on the Maps service via an explicit structure payload
 
   async toggleVisibility(id: string, userId: string) {
     const layer = await this.prisma.layer.findUnique({

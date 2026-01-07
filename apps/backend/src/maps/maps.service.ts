@@ -187,6 +187,15 @@ export class MapsService {
           },
           // Ordering migrated to Map.rootOrder / LayerGroup.layerOrder
         },
+        layerGroups: {
+          include: {
+            layers: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
       },
     });
 

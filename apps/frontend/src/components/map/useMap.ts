@@ -49,7 +49,15 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
   }
 
   const initializeMap = (containerEl: HTMLElement, opts: { center?: [number, number]; zoom?: number; bearing?: number; pitch?: number } = {}) => {
-    if (!containerEl) return
+    if (!containerEl) {
+      console.error('initializeMap: Container element is not defined or null')
+      return null
+    }
+
+    console.log('initializeMap: Creating map with container dimensions:', {
+      width: containerEl.offsetWidth,
+      height: containerEl.offsetHeight
+    })
 
     mapboxMap.value = createMap(containerEl, {
       center: opts.center || [0, 0],
@@ -57,6 +65,11 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
       bearing: opts.bearing ?? 0,
       pitch: opts.pitch ?? 0
     })
+
+    if (!mapboxMap.value) {
+      console.error('initializeMap: Failed to create mapboxMap instance')
+      return null
+    }
 
     // Add layers that are present in the layers array
     layers.value.forEach(layer => {

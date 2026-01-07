@@ -89,6 +89,7 @@ export interface Map {
   corporation: Corporation
   createdBy: User
   layers?: Layer[]
+  layerGroups?: LayerGroup[]
   _count?: {
     layers: number
   }
@@ -106,6 +107,18 @@ export interface Layer {
   updatedAt: string
   style?: any
   dataset: Dataset
+}
+
+export interface LayerGroup {
+  id: string
+  mapId: string
+  name: string
+  isCollapsed: boolean
+  isVisible: boolean
+  layerOrder: string[]
+  createdAt: string
+  updatedAt: string
+  layers?: Array<{ id: string }>
 }
 
 export interface LoginRequest {

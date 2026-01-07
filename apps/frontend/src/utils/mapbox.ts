@@ -5,6 +5,27 @@ import type { Map, Layer, LayerStyle } from '@/types'
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || ''
 
 export const createMap = (container: string | HTMLElement, options: any = {}) => {
+  // Validate container
+  let containerEl: HTMLElement | null = null
+  
+  if (typeof container === 'string') {
+    containerEl = document.getElementById(container)
+    if (!containerEl) {
+      console.error(`createMap: Container with id "${container}" not found in DOM`)
+      throw new Error(`Container "${container}" not found`)
+    }
+  } else if (container instanceof HTMLElement) {
+    containerEl = container
+  } else {
+    console.error('createMap: Container must be an HTMLElement or string ID')
+    throw new Error('Invalid container type')
+  }
+
+  // Check container dimensions
+  if (containerEl.offsetWidth === 0 || containerEl.offsetHeight === 0) {
+    console.warn('createMap: Container has zero dimensions. Width:', containerEl.offsetWidth, 'Height:', containerEl.offsetHeight)
+  }
+
   const defaultOptions = {
     style: 'mapbox://styles/mapbox/streets-v12',
     center: [0, 0],
@@ -12,10 +33,18 @@ export const createMap = (container: string | HTMLElement, options: any = {}) =>
     ...options
   }
 
-  return new mapboxgl.Map({
-    container,
-    ...defaultOptions
-  })
+  try {
+    const map = new mapboxgl.Map({
+      container: containerEl,
+      ...defaultOptions
+    })
+    
+    console.log('createMap: Map instance created successfully')
+    return map
+  } catch (error) {
+    console.error('createMap: Error creating map instance:', error)
+    throw error
+  }
 }
 
 export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: string) => {

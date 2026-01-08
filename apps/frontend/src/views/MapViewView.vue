@@ -1,15 +1,18 @@
 <template>
-  <div class="h-screen flex flex-col">
-    <!-- Loading State -->
-    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-gray-50">
+  <div class="h-screen relative">
+    <!-- Map Container (always mounted) -->
+    <div ref="mapContainer" class="absolute inset-0"></div>
+
+    <!-- Loading Overlay -->
+    <div v-if="isLoading" class="absolute inset-0 z-20 flex items-center justify-center bg-gray-50/90 backdrop-blur-sm">
       <div class="text-center">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
         <p class="mt-4 text-gray-600 font-medium">Loading map...</p>
       </div>
     </div>
 
-    <!-- Error State -->
-    <div v-else-if="!map" class="flex-1 flex items-center justify-center bg-gray-50">
+    <!-- Error Overlay -->
+    <div v-else-if="!map" class="absolute inset-0 z-20 flex items-center justify-center bg-gray-50/90 backdrop-blur-sm">
       <div class="text-center">
         <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -24,11 +27,6 @@
       </div>
     </div>
 
-    <!-- Map Viewer -->
-    <div v-else class="flex-1 relative">
-      <!-- Map Container -->
-      <div ref="mapContainer" class="w-full h-full"></div>
-
       <!-- Floating Sidebar -->
       <transition
         enter-active-class="transition-all duration-300 ease-out"
@@ -38,7 +36,7 @@
         leave-from-class="opacity-100 translate-x-0"
         leave-to-class="opacity-0 -translate-x-full"
       >
-        <div v-if="showSidebar" class="absolute top-4 left-4 bottom-4 w-80 bg-white/95 backdrop-blur-sm shadow-2xl rounded-xl overflow-hidden flex flex-col z-10">
+        <div v-if="map && showSidebar" class="absolute top-4 left-4 bottom-4 w-80 bg-white/95 backdrop-blur-sm shadow-2xl rounded-xl overflow-hidden flex flex-col z-10">
           <!-- Sidebar Header -->
           <div class="px-5 py-4 border-b border-gray-200">
             <div class="flex items-start justify-between">
@@ -129,8 +127,8 @@
                 <!-- Ungrouped Layer -->
                 <div v-else class="px-3 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                   <div class="flex items-start">
-                    <button @click="toggleLayerVisibility(item)" class="mr-2 mt-0.5 text-gray-400 hover:text-gray-600 flex-shrink-0">
-                      <svg v-if="item.isVisible" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <button @click="toggleLayerVisibility(item.layer)" class="mr-2 mt-0.5 text-gray-400 hover:text-gray-600 flex-shrink-0">
+                      <svg v-if="item.layer.isVisible" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
                         <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
                       </svg>
@@ -140,12 +138,12 @@
                       </svg>
                     </button>
                     <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-gray-800 truncate">{{ item.name }}</p>
-                      <p class="text-xs text-gray-500 truncate mt-0.5">{{ item.dataset.name }}</p>
+                      <p class="text-sm font-medium text-gray-800 truncate">{{ item.layer.name }}</p>
+                      <p class="text-xs text-gray-500 truncate mt-0.5">{{ item.layer.dataset.name }}</p>
                       <!-- Legend -->
-                      <div v-if="getLegendInfo(item)" class="mt-2 flex items-center space-x-2">
-                        <component :is="getLegendInfo(item)!.component" :color="getLegendInfo(item)!.color" />
-                        <span v-if="getLegendInfo(item)!.label" class="text-xs text-gray-500">{{ getLegendInfo(item)!.label }}</span>
+                      <div v-if="getLegendInfo(item.layer)" class="mt-2 flex items-center space-x-2">
+                        <component :is="getLegendInfo(item.layer)!.component" :color="getLegendInfo(item.layer)!.color" />
+                        <span v-if="getLegendInfo(item.layer)!.label" class="text-xs text-gray-500">{{ getLegendInfo(item.layer)!.label }}</span>
                       </div>
                     </div>
                   </div>
@@ -169,7 +167,7 @@
 
       <!-- Toggle Sidebar Button -->
       <button
-        v-if="!showSidebar"
+        v-if="map && !showSidebar"
         @click="showSidebar = true"
         class="absolute top-4 left-4 z-10 p-3 bg-white shadow-lg rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
         title="Show layers"
@@ -178,7 +176,6 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-    </div>
   </div>
 </template>
 
@@ -275,17 +272,22 @@ const getLegendInfo = (layer: Layer): { component: any; color: string; label?: s
 }
 
 // Organize layers into groups and ungrouped items
-interface TreeItem {
-  type: 'layer' | 'group'
+interface GroupTreeItem {
+  type: 'group'
   id: string
   name: string
   isVisible: boolean
-  isCollapsed?: boolean
-  children?: Layer[]
-  dataset?: any
-  style?: any
-  groupId?: string | null
+  isCollapsed: boolean
+  children: Layer[]
 }
+
+interface LayerTreeItem {
+  type: 'layer'
+  id: string
+  layer: Layer
+}
+
+type TreeItem = GroupTreeItem | LayerTreeItem
 
 const organizedItems = computed<TreeItem[]>(() => {
   const items: TreeItem[] = []
@@ -329,11 +331,7 @@ const organizedItems = computed<TreeItem[]>(() => {
           items.push({
             type: 'layer',
             id: layer.id,
-            name: layer.name,
-            isVisible: layer.isVisible,
-            dataset: layer.dataset,
-            style: layer.style,
-            groupId: layer.groupId
+            layer
           })
         }
       }
@@ -358,11 +356,7 @@ const organizedItems = computed<TreeItem[]>(() => {
       items.push({
         type: 'layer',
         id: layer.id,
-        name: layer.name,
-        isVisible: layer.isVisible,
-        dataset: layer.dataset,
-        style: layer.style,
-        groupId: layer.groupId
+        layer
       })
     })
   }
@@ -380,13 +374,13 @@ const toggleGroupCollapse = (groupId: string) => {
 }
 
 // Toggle group visibility
-const toggleGroupVisibility = (groupItem: TreeItem) => {
+const toggleGroupVisibility = (groupItem: GroupTreeItem) => {
   const group = layerGroups.value.find(g => g.id === groupItem.id)
   if (group && mapboxMap.value) {
     group.isVisible = !group.isVisible
     
     // Toggle all child layers
-    groupItem.children?.forEach(layer => {
+    groupItem.children.forEach(layer => {
       toggleMapLayerVisibility(mapboxMap.value!, `layer-${layer.id}`, group.isVisible)
       layer.isVisible = group.isVisible
     })

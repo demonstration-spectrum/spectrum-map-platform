@@ -9,6 +9,7 @@ import { DatasetsModule } from './datasets/datasets.module';
 import { MapsModule } from './maps/maps.module';
 import { LayersModule } from './layers/layers.module';
 import { LayerGroupsModule } from './layer-groups/layer-groups.module';
+import { ProxyModule } from './proxy/proxy.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -32,6 +33,7 @@ import { AppService } from './app.service';
     MapsModule,
     LayersModule,
     LayerGroupsModule,
+    ProxyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

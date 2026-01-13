@@ -104,4 +104,65 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
     return false;
   }
+
+  // Helper method to check if a user has read access to a map
+  async hasMapReadAccess(userId: string, mapId: string): Promise<boolean> {
+    const user = await this.user.findUnique({ where: { id: userId } });
+    if (!user) return false;
+
+    const map = await this.map.findUnique({
+      where: { id: mapId },
+      select: { corporationId: true, visibility: true, password: true },
+    });
+    if (!map) return false;
+
+    // Super admin and staff have access to all maps
+    if (user.role === 'SUPER_ADMIN' || user.role === 'STAFF') return true;
+
+    // Subscribed maps: any authenticated user can access
+    if (map.visibility === 'SUBSCRIBED') return true;
+
+    // User belongs to the map's corporation
+    if (user.corporationId && user.corporationId === map.corporationId) return true;
+
+    // Map is public
+    if (map.visibility === 'PUBLIC') return true;
+
+    // Adviser access to the corporation
+    if (user.role === 'ADVISER') {
+      const corporationIds = await this.getUserCorporationIds(userId);
+      return corporationIds.includes(map.corporationId);
+    }
+
+    return false;
+  }
+
+  // Helper method to check if a user has read access to a dataset
+  async hasDatasetReadAccess(userId: string, datasetId: string): Promise<boolean> {
+    const user = await this.user.findUnique({ where: { id: userId } });
+    if (!user) return false;
+
+    const dataset = await this.dataset.findUnique({
+      where: { id: datasetId },
+      select: {
+        corporationId: true,
+        visibility: true,
+        sharedWith: { select: { sharedWithId: true } },
+      },
+    });
+    if (!dataset) return false;
+
+    // Super admin and staff have access to all datasets
+    if (user.role === 'SUPER_ADMIN' || user.role === 'STAFF') return true;
+
+    // User belongs to the dataset's corporation
+    if (user.corporationId && user.corporationId === dataset.corporationId) return true;
+
+    // Dataset is public
+    if (dataset.visibility === 'PUBLIC') return true;
+
+    // Dataset is shared with user's accessible corporations
+    const corporationIds = await this.getUserCorporationIds(userId);
+    return dataset.sharedWith.some((share: any) => corporationIds.includes(share.sharedWithId));
+  }
 }

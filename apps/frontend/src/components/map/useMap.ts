@@ -9,7 +9,7 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
   const selectedFeature = ref<any | null>(null)
   const popupRef = ref<mapboxgl.Popup | null>(null)
 
-  const geoserverBaseUrl = (import.meta.env.VITE_GEOSERVER_URL || '').replace(/\/$/, '')
+  const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
   const buildPublicIdFilter = (value: unknown) => {
     const raw = String(value ?? '').trim()
@@ -18,24 +18,21 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
     return `public_id='${sanitized}'`
   }
 
-  const fetchFeatureFromWfs = async (workspace: string, layerName: string, publicIdValue: unknown) => {
-    if (!geoserverBaseUrl || publicIdValue === null || typeof publicIdValue === 'undefined') return null
+  const fetchFeatureFromWfs = async (datasetId: string, publicIdValue: unknown) => {
+    if (!apiBaseUrl || publicIdValue === null || typeof publicIdValue === 'undefined') return null
     const filter = buildPublicIdFilter(publicIdValue)
     if (!filter) return null
 
     const params = new URLSearchParams({
-      service: 'WFS',
-      version: '1.1.0',
-      request: 'GetFeature',
-      typeName: `${workspace}:${layerName}`,
-      outputFormat: 'application/json',
-      srsName: 'EPSG:4326',
       CQL_FILTER: filter
     })
 
-    const url = `${geoserverBaseUrl}/wfs?${params.toString()}`
+    const url = `${apiBaseUrl}/proxy/datasets/${datasetId}/features?${params.toString()}`
     try {
-      const response = await fetch(url)
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      })
       if (!response.ok) return null
       const data = await response.json()
       const feature = Array.isArray(data?.features) && data.features.length ? data.features[0] : null
@@ -63,7 +60,14 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
       center: opts.center || [0, 0],
       zoom: opts.zoom ?? 2,
       bearing: opts.bearing ?? 0,
-      pitch: opts.pitch ?? 0
+      pitch: opts.pitch ?? 0,
+      transformRequest: (url: string) => {
+        const token = localStorage.getItem('auth_token')
+        if (token && apiBaseUrl && url.startsWith(`${apiBaseUrl}/proxy/`)) {
+          return { url, headers: { Authorization: `Bearer ${token}` } }
+        }
+        return { url }
+      }
     })
 
     if (!mapboxMap.value) {
@@ -74,7 +78,7 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
     // Add layers that are present in the layers array
     layers.value.forEach(layer => {
       if (layer.dataset.workspaceName && layer.dataset.layerName && mapboxMap.value) {
-        addLayerToMap(mapboxMap.value, layer, import.meta.env.VITE_GEOSERVER_URL)
+        addLayerToMap(mapboxMap.value, layer, import.meta.env.VITE_API_URL)
       }
     })
 
@@ -177,9 +181,9 @@ export const useMap = (mapContainer: Ref<HTMLElement | undefined>, mapData: Ref<
         }
       }
 
-      if (layerObj?.dataset?.workspaceName && layerObj.dataset.layerName) {
+      if (layerObj?.dataset?.id) {
         const publicIdValue = (f.properties as any)?.public_id || (f.properties as any)?.publicId || (f.properties as any)?.gid
-        const wfsFeature = await fetchFeatureFromWfs(layerObj.dataset.workspaceName, layerObj.dataset.layerName, publicIdValue)
+        const wfsFeature = await fetchFeatureFromWfs(layerObj.dataset.id, publicIdValue)
         if (wfsFeature) geojsonFeature = wfsFeature
       }
 

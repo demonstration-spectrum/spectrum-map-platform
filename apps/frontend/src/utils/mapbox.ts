@@ -52,7 +52,8 @@ export const addLayerToMap = (map: mapboxgl.Map, layer: Layer, geoserverUrl: str
   const layerId = `layer-${layer.id}`
 
   // Create vector tile source
-  const vectorTileUrl = `${geoserverUrl}/gwc/service/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=${layer.dataset.workspaceName}:${layer.dataset.layerName}&STYLE=&TILEMATRIXSET=WebMercatorQuad&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=application/vnd.mapbox-vector-tile`
+  const apiBaseUrl = (geoserverUrl || '').replace(/\/$/, '')
+  const vectorTileUrl = `${apiBaseUrl}/proxy/layers/${layer.id}/tiles/{z}/{x}/{y}.pbf`
   console.log('Vector Tile URL:', vectorTileUrl);
   const addSourceAndLayer = () => {
     // Only add the vector source if it doesn't already exist.
